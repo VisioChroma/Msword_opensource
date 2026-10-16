@@ -705,6 +705,13 @@ pub fn paint(p: &Painter, r: Rect, name: &str, c: Color32, accent: Color32) {
             pen.frect(4.5, 9.0, 15.5, 17.5, a);
             pen.fcircle(10.0, 12.6, 1.4, Color32::WHITE);
         }
+        "eye" | "eye-off" => {
+            pen.line(&[(2.0, 10.0), (5.0, 6.5), (10.0, 5.0), (15.0, 6.5), (18.0, 10.0), (15.0, 13.5), (10.0, 15.0), (5.0, 13.5), (2.0, 10.0)]);
+            pen.fcircle(10.0, 10.0, 2.2, c);
+            if name == "eye-off" {
+                pen.line_c(&[(3.5, 16.5), (16.5, 3.5)], c);
+            }
+        }
         "selectionPane" => {
             pen.rect(3.0, 3.0, 17.0, 17.0, c);
             pen.lines(6.0, 14.0, &[7.0, 10.0, 13.0]);

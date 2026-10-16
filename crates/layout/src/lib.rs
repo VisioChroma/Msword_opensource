@@ -937,7 +937,7 @@ fn layout_box(
                 let left_out = left_out_objects(ctx.doc, p, table.map(|t| &t.chr), ctx.opts.show_hidden, ctx.hide_deleted);
                 for (oi, o) in p.objects.iter().enumerate() {
                     let Some((w, h, float)) = floating(o) else { continue };
-                    if left_out(oi) {
+                    if left_out(oi) || o.is_hidden() {
                         continue;
                     }
                     let r = float_rect(frame, (0.0, width), y, w, h, float);
@@ -2530,7 +2530,7 @@ fn anchor_floats(
         let left_out = left_out_objects(ctx.doc, p, None, ctx.opts.show_hidden, ctx.hide_deleted);
         for (oi, o) in p.objects.iter().enumerate() {
             let Some((w, h, float)) = floating(o) else { continue };
-            if left_out(oi) {
+            if left_out(oi) || o.is_hidden() {
                 continue;
             }
             // Positions relative to the paragraph start above its space before (Word for Windows).
@@ -2584,7 +2584,7 @@ fn place_objects(
         for k in line.c0..line.c1 {
             let Some(c) = pl.clusters.get(k) else { continue };
             let para::ClKind::Object(oi) = c.kind else { continue };
-            if left_out(oi) {
+            if left_out(oi) || p.objects.get(oi).is_some_and(|o| o.is_hidden()) {
                 continue;
             }
             let Some(obj) = p.objects.get(oi) else { continue };

@@ -220,6 +220,9 @@ pub struct Float {
     /// Not written to files yet.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub name: String,
+        /// Hidden: not laid out, drawn or clicked, but still in the document (the Objects pane eye).
+    #[serde(skip_serializing_if = "is_false")]
+    pub hidden: bool,
 }
 
 /// Longest alternative text kept (characters): hostile files and commands are capped.
@@ -597,6 +600,10 @@ impl InlineObject {
         /// A locked drawing can't be moved, resized, edited or deleted (see [`Float::locked`]).
     pub fn is_locked(&self) -> bool {
         self.frame().is_some_and(|(_, _, f)| f.locked)
+    }
+        /// A hidden floating drawing is left out of the layout (see [`Float::hidden`]).
+    pub fn is_hidden(&self) -> bool {
+        self.frame().is_some_and(|(_, _, f)| f.hidden && f.wrap != Wrap::Inline)
     }
     /// Resize a drawing (a group's members scale with it; a canvas's keep their size and place).
     pub fn set_size(&mut self, nw: f32, nh: f32) {

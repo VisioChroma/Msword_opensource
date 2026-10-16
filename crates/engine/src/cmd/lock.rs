@@ -205,6 +205,7 @@ fn exempt(id: &str) -> bool {
             | "object.lock"
             | "object.unlock"
             | "object.setLocked"
+            | "object.setHidden"
             | "object.rename"
             | "object.altText"
             | "picture.altText"

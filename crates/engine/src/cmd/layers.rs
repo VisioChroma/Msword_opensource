@@ -86,6 +86,7 @@ fn list(s: &mut Session, _: &Value) -> CmdResult {
                 "custom": !custom.is_empty(),
                 "pos": super::pos_json(&pos),
                 "locked": o.is_locked(),
+                "hidden": o.frame().is_some_and(|(_, _, f)| f.hidden),
                 "members": members,
             })
         })
@@ -124,7 +125,19 @@ fn set_locked(s: &mut Session, v: &Value) -> CmdResult {
     para.touch();
     Ok(json!({"locked": lock}))
 }
-
+fn set_hidden(s: &mut Session, v: &Value) -> CmdResult {
+    let pos = object_pos(s, v)?;
+    let hide = v
+        .get("hidden")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| CmdError::Params("`hidden` (true or false) required".into()))?;
+    let para = s.doc.para_mut(pos.story, &pos.path)?;
+    if let Some(float) = para.object_at_mut(pos.off).and_then(InlineObject::float_mut) {
+        float.hidden = hide;
+    }
+    para.touch();
+    Ok(json!({"hidden": hide}))
+}
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("object.list", "Selection Pane", "Layout › Arrange", list)
@@ -134,6 +147,8 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"pos": Pos, "name": text}  (an empty name goes back to the automatic one)"#),
         CommandSpec::new("object.setLocked", "Lock Object", "Layout › Arrange", set_locked)
             .params(r#"{"pos": Pos, "locked": bool}  (lock or unlock the object at pos, selected or not)"#),
+        CommandSpec::new("object.setHidden", "Hide Object", "Layout › Arrange", set_hidden)
+            .params(r#"{"pos": Pos, "hidden": bool}  (hide or show the object at pos)"#),
         CommandSpec::new("view.objectsPane", "Selection Pane", "Layout › Arrange", |s, v| {
             let on = v.get("value").and_then(Value::as_bool).unwrap_or(!s.view.objects_pane);
             s.view.objects_pane = on;

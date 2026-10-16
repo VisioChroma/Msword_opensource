@@ -1233,7 +1233,7 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
         });
     });
         group(ui, "Arrange", None, app, |ui, app| {
-        big(ui, app, "position", "Position", "arrange.position", json!({}), false);
+        position_menu(ui, app);
         wrap_menu(ui, app);
         stack(ui, |ui| {
             small(ui, app, "bringForward", Some("Bring Forward"), "Bring Forward", "arrange.bringForward", json!({}), false);
@@ -1241,7 +1241,7 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
             small(ui, app, "selectionPane", Some("Selection Pane"), "Selection Pane", "view.objectsPane", json!({}), false);
         });
         stack(ui, |ui| {
-            small(ui, app, "align", None, "Align", "arrange.align", json!({}), false);
+            align_menu(ui, app, None);
             group_menu(ui, app, None);
             rotate_menu(ui, app, None);
         });
@@ -1258,6 +1258,11 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
 /// Arrange › Wrap Text: how the selected object sits in the text, and (Square, Tight, Through)
 /// which of its sides text flows on.
 fn wrap_menu(ui: &mut Ui, app: &mut WordApp) {
+        // Move with Text / Fix Position on Page (none for an inline object: it's part of the text).
+    let with_text = wordcraft_engine::cmd::objects::selected(&app.session)
+        .and_then(|(_, o)| o.frame().map(|(_, _, f)| (f.wrap, wordcraft_engine::cmd::objects::moves_with_text(f))))
+        .filter(|(w, _)| *w != wordcraft_doc::para::Wrap::Inline)
+        .map(|(_, m)| m);
     let (wrap, side) = wordcraft_engine::cmd::objects::selected(&app.session)
         .and_then(|(_, o)| o.frame().map(|(_, _, f)| (f.wrap, f.wrap_text)))
         .unwrap_or_default();
@@ -1274,6 +1279,9 @@ fn wrap_menu(ui: &mut Ui, app: &mut WordApp) {
         ] {
             mi_check(ui, app, l, wrap == w, "arrange.wrap", json!({"wrap": v}));
         }
+        ui.separator();
+        mi_check(ui, app, "Move with Text", with_text == Some(true), "arrange.moveWithText", json!({"value": true}));
+        mi_check(ui, app, "Fix Position on Page", with_text == Some(false), "arrange.moveWithText", json!({"value": false}));
         ui.separator();
         ui.menu_button(tl!("Wrap Text Sides"), |ui| {
             for (l, s, v) in [
@@ -1310,7 +1318,46 @@ fn rotation_field(ui: &mut Ui, app: &mut WordApp) {
         let _ = app.run("arrange.rotation", json!({"degrees": deg}));
     }
 }
-
+/// Arrange › Align: line the selected objects up with each other (one object: with the margins)
+/// or space three or more evenly. Locked objects stay put.
+fn align_menu(ui: &mut Ui, app: &mut WordApp, label: Option<&str>) {
+    menu_button(ui, app, "align", label, "Align", false, "arrange.alignObjects", |ui, app| {
+        mi(ui, app, "Align Left", "arrange.alignObjects", json!({"value": "left"}));
+        mi(ui, app, "Align Center", "arrange.alignObjects", json!({"value": "center"}));
+        mi(ui, app, "Align Right", "arrange.alignObjects", json!({"value": "right"}));
+        ui.separator();
+        mi(ui, app, "Align Top", "arrange.alignObjects", json!({"value": "top"}));
+        mi(ui, app, "Align Middle", "arrange.alignObjects", json!({"value": "middle"}));
+        mi(ui, app, "Align Bottom", "arrange.alignObjects", json!({"value": "bottom"}));
+        ui.separator();
+        mi(ui, app, "Distribute Horizontally", "arrange.distribute", json!({"axis": "horizontal"}));
+        mi(ui, app, "Distribute Vertically", "arrange.distribute", json!({"axis": "vertical"}));
+        ui.separator();
+        mi(ui, app, "Center in Margins", "arrange.align", json!({"value": "center"}));
+    });
+}
+/// Arrange › Position: the nine page positions (the object floats, with square wrapping, inside the margins).
+fn position_menu(ui: &mut Ui, app: &mut WordApp) {
+    menu_button(ui, app, "position", Some("Position"), "Position", true, "arrange.position", |ui, app| {
+        let presets = [
+            ("Top Left", "topLeft"),
+            ("Top Center", "topCenter"),
+            ("Top Right", "topRight"),
+            ("Middle Left", "middleLeft"),
+            ("Middle Center", "middleCenter"),
+            ("Middle Right", "middleRight"),
+            ("Bottom Left", "bottomLeft"),
+            ("Bottom Center", "bottomCenter"),
+            ("Bottom Right", "bottomRight"),
+        ];
+        for (i, (label, preset)) in presets.into_iter().enumerate() {
+            if i > 0 && i % 3 == 0 {
+                ui.separator();
+            }
+            mi(ui, app, label, "arrange.position", json!({"preset": preset}));
+        }
+    });
+}
 /// Arrange › Group: Group (Shift+click objects to select several) and Ungroup.
 fn group_menu(ui: &mut Ui, app: &mut WordApp, label: Option<&str>) {
     menu_button(ui, app, "group", label, "Group", false, "arrange.group", |ui, app| {
@@ -1928,7 +1975,7 @@ fn shape_format(app: &mut WordApp, ui: &mut Ui) {
     });
     shape_text_group(app, ui);
     group(ui, "Arrange", None, app, |ui, app| {
-        big(ui, app, "position", "Position", "arrange.position", json!({}), false);
+        position_menu(ui, app);
         wrap_menu(ui, app);
         stack(ui, |ui| {
             rotate_menu(ui, app, Some("Rotate"));
@@ -2083,7 +2130,7 @@ fn picture_format(app: &mut WordApp, ui: &mut Ui) {
     });
     alt_text_group(ui, app);
     group(ui, "Arrange", None, app, |ui, app| {
-        big(ui, app, "position", "Position", "arrange.position", json!({}), false);
+        position_menu(ui, app);
         wrap_menu(ui, app);
         stack(ui, |ui| {
             rotate_menu(ui, app, Some("Rotate"));

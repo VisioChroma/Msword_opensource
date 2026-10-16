@@ -311,7 +311,10 @@ impl DocLayout {
     pub fn text_box(&self, part: u32, page_hint: usize) -> Option<ObjectHit> {
         self.find_object(page_hint, |o| o.text_box == Some(part))
     }
-
+    /// Every object on `page` (its header's and footer's too), for snapping while dragging.
+    pub fn page_objects(&self, page: usize) -> Vec<ObjectHit> {
+        self.pages.get(page).map(|p| all_objects(p, page).collect()).unwrap_or_default()
+    }
     /// The first object matching `f`, looking on `page_hint` first (where the caret is: one page
     /// to scan, not the whole document).
     pub fn find_object(&self, page_hint: usize, f: impl Fn(&ObjectHit) -> bool) -> Option<ObjectHit> {

@@ -55,6 +55,7 @@ fn row(app: &mut WordApp, ui: &mut Ui, row: &Value, picked: &[Pos]) {
     let index = row.get("index").and_then(Value::as_u64).unwrap_or(0);
     let name = row.get("name").and_then(Value::as_str).unwrap_or("").to_string();
     let locked = row.get("locked").and_then(Value::as_bool).unwrap_or(false);
+    let hidden = row.get("hidden").and_then(Value::as_bool).unwrap_or(false);
     let members = row.get("members").and_then(Value::as_u64).unwrap_or(0);
     let pos: Option<Pos> = row.get("pos").and_then(|p| serde_json::from_value(p.clone()).ok());
     let selected = pos.as_ref().is_some_and(|p| picked.contains(p));
@@ -65,7 +66,7 @@ fn row(app: &mut WordApp, ui: &mut Ui, row: &Value, picked: &[Pos]) {
         if ui.checkbox(&mut on, "").on_hover_text(tl!("Add to selection")).changed() {
             let _ = app.run("select.addObject", json!({"index": index}));
         }
-        let width = (ui.available_width() - 30.0).max(40.0);
+        let width = (ui.available_width() - 56.0).max(40.0);
         match editing.filter(|(i, _)| *i == index) {
             Some((_, mut text)) => {
                 let r = ui.add_sized(vec2(width, 22.0), egui::TextEdit::singleline(&mut text));
@@ -96,6 +97,10 @@ fn row(app: &mut WordApp, ui: &mut Ui, row: &Value, picked: &[Pos]) {
             let tip = if locked { tl!("Unlock Object") } else { tl!("Lock Object") };
             if crate::widgets::icon_button(ui, if locked { "lock" } else { "unlock" }, tip).clicked() {
                 let _ = app.run("object.setLocked", json!({"pos": pos, "locked": !locked}));
+            }
+            let eye_tip = if hidden { tl!("Show Object") } else { tl!("Hide Object") };
+            if crate::widgets::icon_button(ui, if hidden { "eye-off" } else { "eye" }, eye_tip).clicked() {
+                let _ = app.run("object.setHidden", json!({"pos": pos, "hidden": !hidden}));
             }
         });
     });

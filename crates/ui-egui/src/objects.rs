@@ -38,6 +38,8 @@ pub struct ObjectDrag {
     picture: bool,
     /// Dragging a connector's end (false: its start, true: its end) to this page point.
     end: Option<(bool, (f32, f32))>,
+    /// Guides and gaps shown while a move snaps (see `wordcraft_geom::snap`).
+    snap: Option<wordcraft_geom::snap::Snap>,
 }
 
 /// How near (screen points) a press must be to a connector's end to grab it.
@@ -232,6 +234,39 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                 // Pictures keep their proportions from a corner unless Shift; shapes only with Shift.
                 d.drag.update(at, pages, scale, d.min, d.picture != shift);
             }
+                        // Smart guides: snap a move to the other objects and the page margins (Alt: off).
+            d.snap = None;
+            if d.drag.grab == Grab::Move && d.drag.moved && !ui.input(|i| i.modifiers.alt) {
+                use wordcraft_geom::snap::{R, snap_move};
+                if let Some(pg) = layout.pages.get(d.drag.to_page) {
+                    let picked = wordcraft_engine::cmd::objects::picked_objects(&app.session);
+                    let own = d.object.pos();
+                    let others: Vec<R> = layout
+                        .page_objects(d.drag.to_page)
+                        .iter()
+                        .filter(|o| o.pos() != own && !picked.contains(&o.pos()))
+                        .map(|o| {
+                            let b = o.bounds();
+                            R::new(b.x, b.y, b.w, b.h)
+                        })
+                        .collect();
+                    let body = pg.body;
+                    let lines_x = [body.x, pg.w / 2.0, body.x + body.w];
+                    let lines_y = [body.y, pg.h / 2.0, body.y + body.h];
+                    let r = d.drag.rect;
+                    let s = snap_move(
+                        R::new(r.x, r.y, r.w, r.h),
+                        &others,
+                        R::new(0.0, 0.0, pg.w, pg.h),
+                        &lines_x,
+                        &lines_y,
+                        6.0 / scale.max(0.01),
+                    );
+                    d.drag.rect.x += s.dx;
+                    d.drag.rect.y += s.dy;
+                    d.snap = Some(s);
+                }
+            }
             app.canvas.obj_drag = Some(d);
         } else {
             drop(app, &d);
@@ -257,7 +292,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
     // A selected connector's end: drag it to glue it.
     if pressed && let Some((object, which)) = connector_end_at(app, layout, pages, scale, at) {
         let drag = Drag::new(Grab::Move, object.page, object.rect, 0.0, at);
-        app.canvas.obj_drag = Some(ObjectDrag { drag, object, min: 0.0, picture: false, end: Some((which, (0.0, 0.0))) });
+        app.canvas.obj_drag = Some(ObjectDrag { drag, object, min: 0.0, picture: false, end: Some((which, (0.0, 0.0))), snap: None });
         return true;
     }
     let Some((object, grab)) = grab_at(app, layout, pages, scale, at) else { return false };
@@ -278,7 +313,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         // Objects in table cells can be selected and resized, not moved; charts neither.
         if !fixed(app, &object) && (grab != Grab::Move || movable(app, &object)) {
             app.canvas.obj_drag =
-                Some(ObjectDrag { drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at), object, min, picture, end: None });
+                Some(ObjectDrag { drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at), object, min, picture, end: None, snap: None });
         }
     }
     true
@@ -422,6 +457,9 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
             painter.image(tex.id(), to, uv, Color32::from_white_alpha(PREVIEW_OPACITY));
         }
         frame::paint(painter, t, to, d.drag.deg, false, false, false);
+        if let (Some(s), Some(page)) = (d.snap.as_ref(), pages.get(d.drag.to_page)) {
+            paint_snap(painter, s, *page, scale);
+        }
         return;
     }
     // The others selected along with it (Shift+click): their outlines.
@@ -439,6 +477,14 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
         // not charts): else a plain frame.
         let handles = selectable_story(app, o.story) && !fixed(app, &o);
         frame::paint(painter, t, f, o.spin.deg, editing, handles, handles);
+                if !editing && o.floating() {
+            let with_text = wordcraft_engine::cmd::objects::selected(&app.session)
+                .and_then(|(_, ob)| ob.frame().map(|(_, _, fl)| wordcraft_engine::cmd::objects::moves_with_text(fl)))
+                .unwrap_or(false);
+            if with_text && let Some(c) = point_on_screen(pages, scale, o.page, (o.origin.x - 14.0, o.origin.y + 9.0)) {
+                paint_anchor(painter, t, c);
+            }
+        }
         if !editing && selectable_story(app, o.story) {
             paint_lock(
                 painter,
@@ -449,7 +495,54 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
         }
     }
 }
-
+/// A small anchor beside the paragraph a floating object moves with (shown while it's selected).
+fn paint_anchor(painter: &Painter, t: &Tokens, c: Pos2) {
+    let st = egui::Stroke::new(1.4, t.accent);
+    painter.circle_stroke(c + egui::vec2(0.0, -5.0), 2.0, st);
+    painter.line_segment([c + egui::vec2(0.0, -3.0), c + egui::vec2(0.0, 6.0)], st);
+    painter.line_segment([c + egui::vec2(-3.0, -0.5), c + egui::vec2(3.0, -0.5)], st);
+    painter.line_segment([c + egui::vec2(0.0, 6.0), c + egui::vec2(-5.0, 2.5)], st);
+    painter.line_segment([c + egui::vec2(0.0, 6.0), c + egui::vec2(5.0, 2.5)], st);
+}
+/// The red guide lines and the gap measurements shown while a move snaps (Figma style).
+fn paint_snap(painter: &Painter, s: &wordcraft_geom::snap::Snap, page: Rect, scale: f32) {
+    use wordcraft_geom::snap::Axis;
+    let red = Color32::from_rgb(242, 72, 34);
+    let magenta = Color32::from_rgb(229, 46, 176);
+    let at = |x: f32, y: f32| egui::pos2(page.min.x + x * scale, page.min.y + y * scale);
+    for g in &s.guides {
+        let (a, b) = match g.axis {
+            Axis::X => (at(g.pos, g.from), at(g.pos, g.to)),
+            Axis::Y => (at(g.from, g.pos), at(g.to, g.pos)),
+        };
+        painter.line_segment([a, b], egui::Stroke::new(1.0, red));
+        for p in [a, b] {
+            painter.circle_filled(p, 2.5, red);
+        }
+    }
+    for gap in &s.gaps {
+        let color = if gap.equal { magenta } else { red };
+        let (a, b) = match gap.axis {
+            Axis::X => (at(gap.start, gap.cross), at(gap.end, gap.cross)),
+            Axis::Y => (at(gap.cross, gap.start), at(gap.cross, gap.end)),
+        };
+        painter.line_segment([a, b], egui::Stroke::new(1.0, color));
+        let tick = match gap.axis {
+            Axis::X => egui::vec2(0.0, 4.0),
+            Axis::Y => egui::vec2(4.0, 0.0),
+        };
+        for p in [a, b] {
+            painter.line_segment([p - tick, p + tick], egui::Stroke::new(1.0, color));
+        }
+        // The gap in points, in a small label in the middle.
+        let label = format!("{}", (gap.end - gap.start).round() as i32);
+        let galley = painter.layout_no_wrap(label, egui::FontId::proportional(10.0), Color32::WHITE);
+        let c = a.lerp(b, 0.5);
+        let r = Rect::from_center_size(c, galley.size() + egui::vec2(8.0, 4.0));
+        painter.rect_filled(r, egui::CornerRadius::same(3), color);
+        painter.galley(r.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    }
+}
 /// A connector's end being dragged: a line from its other end to the pointer, and the connection
 /// sites of the shapes near the pointer (the one it would glue to, filled).
 fn paint_end_drag(app: &WordApp, d: &ObjectDrag, painter: &Painter, t: &Tokens, layout: &DocLayout, pages: &[Rect], scale: f32) {

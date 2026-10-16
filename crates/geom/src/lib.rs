@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 mod region;
+pub mod snap;
 pub use region::Region;
 
 /// Points per inch.

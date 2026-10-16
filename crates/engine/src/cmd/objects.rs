@@ -313,6 +313,12 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value": "left|center|right"}"#)
         .when(has_movable),
+                CommandSpec::new("arrange.alignObjects", "Align Objects", "Layout › Arrange › Align", |s, v| arrange_objects(s, v, false))
+            .params(r#"{"value": "left|center|right|top|middle|bottom"}  (several selected objects line up with each other, one with the margins; locked ones stay put)"#)
+            .when(has_movable),
+        CommandSpec::new("arrange.distribute", "Distribute Objects", "Layout › Arrange › Align", |s, v| arrange_objects(s, v, true))
+            .params(r#"{"axis": "horizontal|vertical"}  (three or more selected objects get equal gaps)"#)
+            .when(has_movable),
         CommandSpec::new("arrange.selectionPane", "Selection Pane", "Layout › Arrange", objects_list).pure(),
         CommandSpec::new("arrange.bounds", "Move or Resize", "Layout › Arrange", bounds)
             .params(r#"{"width"?: pt, "height"?: pt, "x"?: pt, "y"?: pt, "page"?: n}  (x/y: the top-left on page `page` (0-based, default its page); moving an inline object floats it)"#)
@@ -746,7 +752,92 @@ fn move_object(s: &mut Session, pos: Pos, page: Option<u64>, x: f32, y: f32, (w,
     })?;
     Ok(at)
 }
+/// Move the floating object at `pos` by (dx, dy) page points, keeping its anchor (as
+/// `arrange.nudge` does): an alignment (left, centred, …) first becomes an offset that keeps it
+/// where it is.
+fn shift_object(s: &mut Session, pos: &Pos, hit: &wordcraft_layout::hit::ObjectHit, dx: f32, dy: f32) -> Result<(), CmdError> {
+    use wordcraft_doc::para::Anchor;
+    let (ox, oy) = (hit.rect.x - hit.origin.x, hit.rect.y - hit.origin.y);
+    edit_float(s, pos, |f| {
+        if f.h_align.is_some() {
+            f.h_align = None;
+            f.h_rel = Anchor::Column;
+            f.x = ox.clamp(-MAX_OFFSET, MAX_OFFSET);
+        }
+        if f.v_align.is_some() {
+            f.v_align = None;
+            f.v_rel = Anchor::Paragraph;
+            f.y = oy.clamp(-MAX_OFFSET, MAX_OFFSET);
+        }
+        f.x = (f.x + dx).clamp(-MAX_OFFSET, MAX_OFFSET);
+        f.y = (f.y + dy).clamp(-MAX_OFFSET, MAX_OFFSET);
+    })?;
+    Ok(())
+}
 
+/// Arrange › Align / Distribute for the picked objects (the selected one plus those added with
+/// Shift+click). Locked, inline and not-laid-out (hidden) objects are left alone.
+fn arrange_objects(s: &mut Session, v: &Value, distribute: bool) -> CmdResult {
+    use wordcraft_geom::snap::{Align, Axis, R, align_deltas, distribute_deltas};
+    let picked = picked_objects(s);
+    if picked.is_empty() {
+        return Err(CmdError::Disabled("no picture or shape selected".into()));
+    }
+    let layout = s.layout();
+    let mut items: Vec<(Pos, wordcraft_layout::hit::ObjectHit, R)> = Vec::new();
+    let mut skipped = 0usize;
+    for pos in picked {
+        let locked = s.doc.para_at(&pos).and_then(|q| q.object_at(pos.off)).is_some_and(InlineObject::is_locked);
+        match layout.object(&pos, s.page_hint) {
+            Some(h) if !locked && h.floating() && pos.path.depth() == 0 && movable_story(s, pos.story) => {
+                let b = h.bounds();
+                items.push((pos, h, R::new(b.x, b.y, b.w, b.h)));
+            }
+            _ => skipped += 1,
+        }
+    }
+    let Some(page) = items.first().map(|i| i.1.page) else {
+        return Err(CmdError::Disabled("select a floating picture, shape or text box that isn't locked".into()));
+    };
+    if items.iter().any(|i| i.1.page != page) {
+        return Err(CmdError::Failed("the selected objects are on different pages".into()));
+    }
+    let rects: Vec<R> = items.iter().map(|i| i.2).collect();
+    let deltas: Vec<(f32, f32)> = if distribute {
+        if rects.len() < 3 {
+            return Err(CmdError::Disabled("select three or more objects to distribute".into()));
+        }
+        let axis = if p::str(v, "axis") == Some("vertical") { Axis::Y } else { Axis::X };
+        distribute_deltas(&rects, axis).into_iter().map(|d| if axis == Axis::X { (d, 0.0) } else { (0.0, d) }).collect()
+    } else {
+        let mode = match p::str(v, "value").unwrap_or("left") {
+            "left" => Align::Left,
+            "center" => Align::Center,
+            "right" => Align::Right,
+            "top" => Align::Top,
+            "middle" => Align::Middle,
+            "bottom" => Align::Bottom,
+            other => return Err(CmdError::Params(format!("unknown alignment `{other}`"))),
+        };
+        // Several objects line up with each other; a single one with the page margins.
+        let reference = if rects.len() >= 2 {
+            rects.iter().copied().reduce(|a, b| a.union(b))
+        } else {
+            layout.pages.get(page).map(|pg| R::new(pg.body.x, pg.body.y, pg.body.w, pg.body.h))
+        };
+        let Some(reference) = reference else { return Err(CmdError::Failed("the page isn't laid out".into())) };
+        align_deltas(&rects, mode, reference)
+    };
+    let mut moved = 0usize;
+    for ((pos, hit, _), (dx, dy)) in items.iter().zip(deltas) {
+        if dx.abs() < 0.01 && dy.abs() < 0.01 {
+            continue;
+        }
+        shift_object(s, pos, hit, dx, dy)?;
+        moved += 1;
+    }
+    Ok(json!({"moved": moved, "skipped": skipped}))
+}
 /// Turn the selected floating object's alignment (left, centred, …) into an offset from its
 /// column / paragraph that keeps it where it is, so it can be moved by an offset.
 fn unalign(s: &mut Session) -> Result<(), CmdError> {
