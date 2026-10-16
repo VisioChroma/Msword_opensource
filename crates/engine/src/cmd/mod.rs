@@ -6,6 +6,7 @@ pub mod caret;
 pub mod chart;
 pub mod citations;
 pub mod column;
+pub mod components;
 pub mod connectors;
 pub mod controls;
 pub mod design;
@@ -92,6 +93,7 @@ pub fn registry() -> Registry {
     v.extend(objects::specs());
     v.extend(lock::specs());
     v.extend(layers::specs());
+    v.extend(components::specs());
     v.extend(smart_art::specs());
     v.extend(chart::specs());
     v.extend(draw::specs());

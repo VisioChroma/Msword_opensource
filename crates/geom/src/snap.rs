@@ -189,14 +189,8 @@ pub fn snap_move(moving: R, others: &[R], page: R, lines_x: &[f32], lines_y: &[f
         (Some(x), None) | (None, Some(x)) => x,
         _ => 0.0,
     };
-    let dx = pick(
-        best_delta(moving, &tx, Axis::X, th),
-        equal_gap_delta(moving, others, Axis::X).filter(|d| d.abs() <= th),
-    );
-    let dy = pick(
-        best_delta(moving, &ty, Axis::Y, th),
-        equal_gap_delta(moving, others, Axis::Y).filter(|d| d.abs() <= th),
-    );
+    let dx = pick(best_delta(moving, &tx, Axis::X, th), equal_gap_delta(moving, others, Axis::X).filter(|d| d.abs() <= th));
+    let dy = pick(best_delta(moving, &ty, Axis::Y, th), equal_gap_delta(moving, others, Axis::Y).filter(|d| d.abs() <= th));
     let s = moving.shifted(dx, dy);
     Snap { dx, dy, guides: guides_for(s, others, page, lines_x, lines_y), gaps: nearest_gaps(s, others) }
 }

@@ -581,8 +581,52 @@ pub fn restrict_pane(app: &mut WordApp, ui: &mut Ui) {
     });
     app.restrict = st;
 }
+fn template_setup_ui(app: &mut WordApp, ui: &mut Ui, st: &mut RestrictPane) {
+    heading(ui, "Protected template");
 
+    ui.label(egui::RichText::new(tl!("Keep fixed content protected and mark only the areas people should fill in.")).small());
+
+    if ui.button(tl!("Set up protected template")).clicked() {
+        // EDIT_MODES[0] is readOnly. Protection starts only when the
+        // existing Start Enforcing Protection flow is completed.
+        st.editing = true;
+        st.mode = 0;
+        st.asking = false;
+        st.password = Password::default();
+        st.confirm = Password::default();
+        st.message.clear();
+    }
+
+    if st.editing && st.mode == 0 {
+        ui.label(egui::RichText::new(tl!("For ordinary text, select the editable area and tick Everyone below.")).small());
+
+        ui.label(
+            egui::RichText::new(tl!("For a plain-text or rich-text content control, put the cursor inside it and use the button below.")).small(),
+        );
+
+        let in_control = app.session.doc.control_at(&app.session.sel.focus).is_some();
+        if ui.add_enabled(in_control, egui::Button::new(tl!("Make current text field editable"))).clicked() {
+            match app.run("review.restrict", json!({"exception": "control"})) {
+                Ok(_) => {
+                    st.message.clear();
+                    app.canvas.want_focus = true;
+                }
+                Err(e) => st.message = e,
+            }
+        }
+
+        let has_regions = !app.session.doc.perm_ranges().is_empty();
+        if !has_regions {
+            ui.label(egui::RichText::new(tl!("No editable regions yet. Starting protection now makes the whole document read only.")).small());
+        }
+
+        ui.label(egui::RichText::new(tl!("After marking the fields, use Start Enforcing Protection below.")).small());
+    }
+
+    ui.separator();
+}
 fn setup_ui(app: &mut WordApp, ui: &mut Ui, st: &mut RestrictPane) {
+    template_setup_ui(app, ui, st);
     heading(ui, "1. Formatting restrictions");
     ui.checkbox(&mut st.formatting, tl!("Limit formatting to a selection of styles"));
     if st.formatting && ui.small_button(tl!("Settings…")).clicked() {

@@ -867,6 +867,7 @@ fn insert(app: &mut WordApp, ui: &mut Ui) {
                     }
                 }
                 mi(ui, app, "Field…", "ui.dialog", json!({"name": "field"}));
+                mi(ui, app, "Document Components", "view.componentsPane", json!({}));
             });
             menu_button(ui, app, "wordArt", Some("WordArt"), "WordArt", false, "", |ui, app| {
                 crate::wordart_menus::style_gallery(ui, app, "insert.wordArt")
@@ -1232,7 +1233,7 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
             ui.end_row();
         });
     });
-        group(ui, "Arrange", None, app, |ui, app| {
+    group(ui, "Arrange", None, app, |ui, app| {
         position_menu(ui, app);
         wrap_menu(ui, app);
         stack(ui, |ui| {
@@ -1252,13 +1253,11 @@ fn layout(app: &mut WordApp, ui: &mut Ui) {
     });
 }
 
-    
-
 /// Arrange › Rotate: turn 90° either way or flip (the angle and mirroring, not the pixels).
 /// Arrange › Wrap Text: how the selected object sits in the text, and (Square, Tight, Through)
 /// which of its sides text flows on.
 fn wrap_menu(ui: &mut Ui, app: &mut WordApp) {
-        // Move with Text / Fix Position on Page (none for an inline object: it's part of the text).
+    // Move with Text / Fix Position on Page (none for an inline object: it's part of the text).
     let with_text = wordcraft_engine::cmd::objects::selected(&app.session)
         .and_then(|(_, o)| o.frame().map(|(_, _, f)| (f.wrap, wordcraft_engine::cmd::objects::moves_with_text(f))))
         .filter(|(w, _)| *w != wordcraft_doc::para::Wrap::Inline)
@@ -1605,7 +1604,9 @@ fn review(app: &mut WordApp, ui: &mut Ui) {
     });
     group(ui, "Compare", None, app, |ui, app| {
         big(ui, app, "compare", "Compare", "review.compare", json!({}), false);
+        big(ui, app, "compare", "Visual\nReview", "view.visualReviewPane", json!({}), false);
     });
+
     group(ui, "Protect", None, app, |ui, app| {
         big(ui, app, "blockAuthors", "Block\nAuthors", "review.blockAuthors", json!({}), false);
         big(ui, app, "restrict", "Restrict\nEditing", "review.restrict", json!({}), false);
@@ -2369,7 +2370,7 @@ fn cell_size_boxes(ui: &mut Ui, app: &mut WordApp) {
 }
 
 fn table_layout(app: &mut WordApp, ui: &mut Ui) {
-        group(ui, "Table", None, app, |ui, app| {
+    group(ui, "Table", None, app, |ui, app| {
         stack(ui, |ui| {
             menu_button(ui, app, "selectTable", Some("Select"), "Select", false, "table.selectTable", |ui, app| {
                 mi(ui, app, "Select Cell", "table.selectCell", json!({}));

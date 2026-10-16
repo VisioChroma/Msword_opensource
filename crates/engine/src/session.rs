@@ -180,10 +180,13 @@ pub struct ViewState {
     /// Developer › Design Mode: every content control shows its frame and title.
     #[serde(default)]
     pub design_mode: bool,
-        /// The Objects pane (Layout › Arrange › Selection Pane): every picture, shape and text
+    /// The Objects pane (Layout › Arrange › Selection Pane): every picture, shape and text
     /// box, to select, rename, lock and arrange.
     #[serde(default)]
     pub objects_pane: bool,
+    /// The Components pane (Insert › Quick Parts › Document Components).
+    #[serde(default)]
+    pub components_pane: bool,
 }
 
 fn on() -> bool {
@@ -242,6 +245,7 @@ impl Default for ViewState {
             outline: Default::default(),
             design_mode: false,
             objects_pane: false,
+            components_pane: false,
         }
     }
 }
@@ -400,6 +404,9 @@ pub struct Session {
     pub versions: Vec<(String, String, Document)>,
     /// Quick Parts / AutoText entries.
     pub building_blocks: std::collections::BTreeMap<String, Fragment>,
+    pub visual_review: crate::cmd::review::VisualReview,
+    /// Reusable document components (Insert › Text › Quick Parts › Document Components).
+    pub components: crate::cmd::components::Library,
     pub autosave: bool,
     /// Citation style: APA, MLA, Chicago, IEEE.
     pub bib_style: String,
@@ -603,6 +610,8 @@ impl Session {
             macros: Default::default(),
             versions: Vec::new(),
             building_blocks: Default::default(),
+            visual_review: Default::default(),
+            components: Default::default(),
             autosave: true,
             bib_style,
             merge: Default::default(),
@@ -1033,6 +1042,9 @@ impl Session {
             macros: _,
             versions: _,
             building_blocks: _,
+            visual_review: _,
+            // The component library, like the Quick Parts: not part of the document or its history.
+            components: _,
             autosave: _,
             bib_style: _,
             merge: _,
@@ -1212,7 +1224,7 @@ impl Session {
         {
             result = Err(CmdError::Disabled(format!("{id}: only the editable regions of this protected document can change")));
         }
-                // Locked objects: nothing may move, resize, edit or delete them.
+        // Locked objects: nothing may move, resize, edit or delete them.
         if result.is_ok()
             && self.document_id == doc_before
             && let Some((before, ..)) = &before_doc

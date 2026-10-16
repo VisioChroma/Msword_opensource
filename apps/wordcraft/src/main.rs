@@ -144,6 +144,15 @@ fn load_user_dictionary(app: &mut WordApp) {
         app.session.user_dict_path = Some(p);
     }
 }
+/// `components.json` in the settings folder: the reusable components the person saved.
+fn load_components(app: &mut WordApp) {
+    if !prefs_enabled() {
+        return;
+    }
+    if let Some(dir) = wordcraft_control_key::settings_dir() {
+        app.session.components.load(dir.join("components.json"));
+    }
+}
 
 /// Runs without preferences (`WORDCRAFT_NO_PREFS`, agents' test runs) neither read nor write them.
 fn prefs_enabled() -> bool {
@@ -320,6 +329,7 @@ fn main() -> eframe::Result {
             let mut app = WordApp::new(session, services(file_dialog, &cc.egui_ctx));
             load_prefs(&mut app);
             load_user_dictionary(&mut app);
+            load_components(&mut app);
             // A region chosen in File › Options replaces the system's for the first blank
             // document too (#838).
             if !sample && app.session.prefs.region.is_some() {

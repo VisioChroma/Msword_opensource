@@ -969,7 +969,7 @@ pub struct TableProps {
     /// Alternative text: the description (`w:tblDescription`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-        /// Locked (Table Layout › Table › Lock): the table's text, formatting, rows, columns and size
+    /// Locked (Table Layout › Table › Lock): the table's text, formatting, rows, columns and size
     /// can't change until it is unlocked.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,

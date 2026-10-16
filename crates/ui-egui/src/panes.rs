@@ -11,6 +11,7 @@ use crate::theme::{Tokens, regular, semibold};
 
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    crate::visual_review::show(app, ui);
     // SmartArt Design › Text Pane, while a SmartArt graphic WordCraft can edit is selected.
     if app.session.view.smart_art_pane && wordcraft_engine::cmd::smart_art::selected_smart_art(&app.session).is_some() {
         egui::Panel::left("smart_art_pane")
@@ -67,7 +68,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             .frame(egui::Frame::NONE.fill(t.panel).inner_margin(10).stroke(Stroke::new(1.0, t.border)))
             .show(ui, |ui| crate::a11y_pane::alt_text(app, ui));
     }
-        if app.session.view.objects_pane {
+    if app.session.view.objects_pane {
         egui::Panel::right("objects_pane")
             .default_size(270.0)
             .resizable(true)
@@ -78,6 +79,19 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     return;
                 }
                 crate::objects_pane::show(app, ui);
+            });
+    }
+    if app.session.view.components_pane {
+        egui::Panel::right("components_pane")
+            .default_size(290.0)
+            .resizable(true)
+            .frame(egui::Frame::NONE.fill(t.panel).inner_margin(10).stroke(Stroke::new(1.0, t.border)))
+            .show(ui, |ui| {
+                if header(ui, "Components") {
+                    let _ = app.run("view.componentsPane", json!({"value": false}));
+                    return;
+                }
+                crate::components_pane::show(app, ui);
             });
     }
     if app.restrict.open {

@@ -26,9 +26,12 @@ fn rows(app: &mut WordApp, ctx: &egui::Context) -> Vec<Value> {
 
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     ui.horizontal_wrapped(|ui| {
-        for (label, id) in
-            [("Group", "arrange.group"), ("Ungroup", "arrange.ungroup"), ("Bring Forward", "arrange.bringForward"), ("Send Backward", "arrange.sendBackward")]
-        {
+        for (label, id) in [
+            ("Group", "arrange.group"),
+            ("Ungroup", "arrange.ungroup"),
+            ("Bring Forward", "arrange.bringForward"),
+            ("Send Backward", "arrange.sendBackward"),
+        ] {
             let enabled = crate::widgets::enabled(app, id);
             if ui.add_enabled(enabled, egui::Button::new(tl!(label))).clicked() {
                 let _ = app.run(id, json!({}));

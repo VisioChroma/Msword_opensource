@@ -127,10 +127,7 @@ fn set_locked(s: &mut Session, v: &Value) -> CmdResult {
 }
 fn set_hidden(s: &mut Session, v: &Value) -> CmdResult {
     let pos = object_pos(s, v)?;
-    let hide = v
-        .get("hidden")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| CmdError::Params("`hidden` (true or false) required".into()))?;
+    let hide = v.get("hidden").and_then(Value::as_bool).ok_or_else(|| CmdError::Params("`hidden` (true or false) required".into()))?;
     let para = s.doc.para_mut(pos.story, &pos.path)?;
     if let Some(float) = para.object_at_mut(pos.off).and_then(InlineObject::float_mut) {
         float.hidden = hide;

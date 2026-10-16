@@ -68,11 +68,7 @@ fn set_locked(s: &mut Session, lock: bool) -> CmdResult {
     Ok(json!({"locked": lock, "changed": changed}))
 }
 fn can_toggle_lock(s: &Session) -> Option<&'static str> {
-    if can_lock(s).is_none() || can_unlock(s).is_none() {
-        None
-    } else {
-        Some("select a picture, shape or text box first")
-    }
+    if can_lock(s).is_none() || can_unlock(s).is_none() { None } else { Some("select a picture, shape or text box first") }
 }
 
 fn toggle_lock(s: &mut Session) -> CmdResult {
@@ -136,22 +132,17 @@ fn set_table_locked(s: &mut Session, lock: Option<bool>) -> CmdResult {
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-                CommandSpec::new(
-            "object.toggleLock",
-            "Lock Object",
-            "Layout › Arrange",
-            |s, _| toggle_lock(s),
-        )
-        .params(r#"{} (toggle locking for the selected objects)"#)
-        .key("Mod+Alt+L")
-        .when(can_toggle_lock),
+        CommandSpec::new("object.toggleLock", "Lock Object", "Layout › Arrange", |s, _| toggle_lock(s))
+            .params(r#"{} (toggle locking for the selected objects)"#)
+            .key("Mod+Alt+L")
+            .when(can_toggle_lock),
         CommandSpec::new("object.lock", "Lock Object", "Layout › Arrange", |s, _| set_locked(s, true))
             .params(r#"{} (the selected pictures, shapes, text boxes and groups)"#)
             .when(can_lock),
         CommandSpec::new("object.unlock", "Unlock Object", "Layout › Arrange", |s, _| set_locked(s, false))
             .params(r#"{} (the selected pictures, shapes, text boxes and groups)"#)
             .when(can_unlock),
-                CommandSpec::new("table.toggleLock", "Lock Table", "Table Layout › Table", |s, _| set_table_locked(s, None))
+        CommandSpec::new("table.toggleLock", "Lock Table", "Table Layout › Table", |s, _| set_table_locked(s, None))
             .params(r#"{} (locks the table the cursor is in, or unlocks it)"#)
             .when(can_toggle_table_lock),
         CommandSpec::new("table.lock", "Lock Table", "Table Layout › Table", |s, _| set_table_locked(s, Some(true)))
@@ -187,7 +178,7 @@ fn locked_objects(doc: &Document) -> Vec<Locked> {
                 if !o.is_locked() {
                     continue;
                 }
-                                // The content of the text box, or of every text box inside a group.
+                // The content of the text box, or of every text box inside a group.
                 let parts: Vec<Part> = o.text_boxes().iter().filter_map(|id| doc.parts.get(id).cloned()).collect();
                 out.push(Locked { object: o.clone(), parts });
             }
@@ -216,6 +207,7 @@ fn exempt(id: &str) -> bool {
             | "edit.undo"
             | "edit.undoTo"
             | "edit.redo"
+            | "component.sync"
     ) || id.starts_with("file.")
 }
 

@@ -126,19 +126,11 @@ fn hit_locked(app: &WordApp, hit: &ObjectHit) -> bool {
 fn lock_badge(f: Rect, degrees: f32) -> Rect {
     let rotation = frame::rotate_handle(f, degrees);
 
-    Rect::from_center_size(
-        rotation + egui::vec2(32.0, 0.0),
-        egui::vec2(22.0, 22.0),
-    )
+    Rect::from_center_size(rotation + egui::vec2(32.0, 0.0), egui::vec2(22.0, 22.0))
 }
 
 /// The badge of the selected object; clicking it toggles locking.
-fn lock_badge_rect(
-    app: &WordApp,
-    layout: &DocLayout,
-    pages: &[Rect],
-    scale: f32,
-) -> Option<Rect> {
+fn lock_badge_rect(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32) -> Option<Rect> {
     let (object, editing) = active(app, layout)?;
 
     if editing || !selectable_story(app, object.story) {
@@ -150,34 +142,14 @@ fn lock_badge_rect(
 }
 
 /// A padlock, drawn in code.
-fn paint_lock(
-    painter: &Painter,
-    t: &Tokens,
-    badge: Rect,
-    locked: bool,
-) {
+fn paint_lock(painter: &Painter, t: &Tokens, badge: Rect, locked: bool) {
     let center = badge.center();
 
-    painter.circle_filled(
-        center + egui::vec2(0.0, 0.75),
-        11.5,
-        t.handle_shadow,
-    );
+    painter.circle_filled(center + egui::vec2(0.0, 0.75), 11.5, t.handle_shadow);
 
-    painter.circle(
-        center,
-        11.0,
-        t.handle,
-        egui::Stroke::new(1.25, t.accent),
-    );
+    painter.circle(center, 11.0, t.handle, egui::Stroke::new(1.25, t.accent));
 
-    crate::icons::paint(
-        painter,
-        badge.shrink(3.0),
-        if locked { "lock" } else { "unlock" },
-        t.accent,
-        t.accent,
-    );
+    crate::icons::paint(painter, badge.shrink(3.0), if locked { "lock" } else { "unlock" }, t.accent, t.accent);
 }
 
 /// The story of the selected text box.
@@ -234,7 +206,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                 // Pictures keep their proportions from a corner unless Shift; shapes only with Shift.
                 d.drag.update(at, pages, scale, d.min, d.picture != shift);
             }
-                        // Smart guides: snap a move to the other objects and the page margins (Alt: off).
+            // Smart guides: snap a move to the other objects and the page margins (Alt: off).
             d.snap = None;
             if d.drag.grab == Grab::Move && d.drag.moved && !ui.input(|i| i.modifiers.alt) {
                 use wordcraft_geom::snap::{R, snap_move};
@@ -254,14 +226,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                     let lines_x = [body.x, pg.w / 2.0, body.x + body.w];
                     let lines_y = [body.y, pg.h / 2.0, body.y + body.h];
                     let r = d.drag.rect;
-                    let s = snap_move(
-                        R::new(r.x, r.y, r.w, r.h),
-                        &others,
-                        R::new(0.0, 0.0, pg.w, pg.h),
-                        &lines_x,
-                        &lines_y,
-                        6.0 / scale.max(0.01),
-                    );
+                    let s = snap_move(R::new(r.x, r.y, r.w, r.h), &others, R::new(0.0, 0.0, pg.w, pg.h), &lines_x, &lines_y, 6.0 / scale.max(0.01));
                     d.drag.rect.x += s.dx;
                     d.drag.rect.y += s.dy;
                     d.snap = Some(s);
@@ -274,10 +239,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         return true;
     }
     let pressed = ui.input(|i| i.pointer.primary_pressed()) && resp.contains_pointer();
-    if pressed
-        && lock_badge_rect(app, layout, pages, scale)
-            .is_some_and(|badge| badge.contains(at))
-    {
+    if pressed && lock_badge_rect(app, layout, pages, scale).is_some_and(|badge| badge.contains(at)) {
         let _ = app.run("object.toggleLock", json!({}));
         return true;
     }
@@ -312,8 +274,14 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         };
         // Objects in table cells can be selected and resized, not moved; charts neither.
         if !fixed(app, &object) && (grab != Grab::Move || movable(app, &object)) {
-            app.canvas.obj_drag =
-                Some(ObjectDrag { drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at), object, min, picture, end: None, snap: None });
+            app.canvas.obj_drag = Some(ObjectDrag {
+                drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
+                object,
+                min,
+                picture,
+                end: None,
+                snap: None,
+            });
         }
     }
     true
@@ -412,19 +380,12 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
         let locked = hit_locked(app, &o);
         if !locked {
             let glued = match selected(app) {
-                Some((_, InlineObject::Shape { extra, .. })) => {
-                    (extra.start.is_some(), extra.end.is_some())
-                }
+                Some((_, InlineObject::Shape { extra, .. })) => (extra.start.is_some(), extra.end.is_some()),
                 _ => (false, false),
             };
             for (p, on) in [(a, glued.0), (b, glued.1)] {
                 if let Some(c) = point_on_screen(pages, scale, o.page, p) {
-                    painter.circle(
-                        c,
-                        4.5,
-                        if on { t.accent } else { Color32::WHITE },
-                        egui::Stroke::new(1.2, t.accent),
-                    );
+                    painter.circle(c, 4.5, if on { t.accent } else { Color32::WHITE }, egui::Stroke::new(1.2, t.accent));
                 }
             }
         }
@@ -477,7 +438,7 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
         // not charts): else a plain frame.
         let handles = selectable_story(app, o.story) && !fixed(app, &o);
         frame::paint(painter, t, f, o.spin.deg, editing, handles, handles);
-                if !editing && o.floating() {
+        if !editing && o.floating() {
             let with_text = wordcraft_engine::cmd::objects::selected(&app.session)
                 .and_then(|(_, ob)| ob.frame().map(|(_, _, fl)| wordcraft_engine::cmd::objects::moves_with_text(fl)))
                 .unwrap_or(false);
@@ -486,12 +447,7 @@ pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, p
             }
         }
         if !editing && selectable_story(app, o.story) {
-            paint_lock(
-                painter,
-                t,
-                lock_badge(f, o.spin.deg),
-                hit_locked(app, &o),
-            );
+            paint_lock(painter, t, lock_badge(f, o.spin.deg), hit_locked(app, &o));
         }
     }
 }

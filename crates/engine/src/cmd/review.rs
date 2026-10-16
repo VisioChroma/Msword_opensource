@@ -6,9 +6,119 @@ use wordcraft_doc::{Comment, Paragraph, PartKind, Pos, StoryRef, para_block};
 
 use super::{fmt_revisions, now_iso, pos_json, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
+/// Temporary visual comparison snapshots.
+/// These are not part of the document, undo history, or DOCX file.
+#[derive(Default)]
+pub struct VisualReview {
+    pub open: bool,
+    pub baseline: Option<wordcraft_doc::Document>,
+    pub compared: Option<wordcraft_doc::Document>,
+    pub compared_stamp: Option<(u64, u64)>,
+    pub generation: u64,
+}
+
+/// Capture a bounded snapshot without changing the working document.
+fn visual_capture(s: &mut Session, baseline: bool) -> CmdResult {
+    if s.doc.paragraph_count() > 10_000 {
+        return Err(CmdError::Disabled("visual review currently supports documents up to 10000 paragraphs".into()));
+    }
+
+    if !baseline && s.visual_review.baseline.is_none() {
+        return Err(CmdError::Disabled("capture a baseline before comparing".into()));
+    }
+
+    let doc = s.doc.clone();
+    let stamp = (s.document_id(), s.rev());
+    let state = &mut s.visual_review;
+
+    if baseline {
+        state.baseline = Some(doc);
+        state.compared = None;
+        state.compared_stamp = None;
+    } else {
+        state.compared = Some(doc);
+        state.compared_stamp = Some(stamp);
+    }
+
+    state.generation = state.generation.wrapping_add(1);
+    state.open = true;
+    Ok(json!({"baseline": baseline, "generation": state.generation}))
+}
+
+/// Compare drawing-object definitions in document order.
+/// This detects a difference, not an identity match between individual objects.
+pub fn visual_objects_differ(a: &wordcraft_doc::Document, b: &wordcraft_doc::Document) -> bool {
+    fn objects(doc: &wordcraft_doc::Document) -> Vec<(StoryRef, InlineObject)> {
+        let mut out = Vec::new();
+        let stories = std::iter::once(StoryRef::Body).chain(doc.parts.keys().map(|id| StoryRef::Part(*id)));
+
+        for story in stories {
+            for path in doc.para_paths(story) {
+                let Some(para) = doc.para(story, &path) else {
+                    continue;
+                };
+                for off in para.object_offsets() {
+                    if let Some(object) = para.object_at(off)
+                        && object.frame().is_some()
+                    {
+                        out.push((story, object.clone()));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    objects(a) != objects(b)
+}
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
+                CommandSpec::new(
+            "view.visualReviewPane",
+            "Reviewing Pane",
+            "Review › Compare",
+            |s, v| {
+                let on = p::bool(v, "value").unwrap_or(!s.visual_review.open);
+                s.visual_review.open = on;
+                Ok(json!({"value": on}))
+            },
+        )
+        .params(r#"{"value"?: bool}"#)
+        .pure(),
+
+        CommandSpec::new(
+            "review.visualBaseline",
+            "Compare",
+            "Review › Compare",
+            |s, _| visual_capture(s, true),
+        )
+        .params(r#"{} (capture the current document as the visual baseline)"#)
+        .pure(),
+
+        CommandSpec::new(
+            "review.visualCompare",
+            "Refresh",
+            "Review › Compare",
+            |s, _| visual_capture(s, false),
+        )
+        .params(r#"{} (compare a snapshot of the current document with the baseline)"#)
+        .pure(),
+
+        CommandSpec::new(
+            "review.visualClear",
+            "Delete",
+            "Review › Compare",
+            |s, _| {
+                let state = &mut s.visual_review;
+                state.baseline = None;
+                state.compared = None;
+                state.compared_stamp = None;
+                state.generation = state.generation.wrapping_add(1);
+                Ok(json!({"cleared": true}))
+            },
+        )
+        .pure(),
         CommandSpec::new("review.newComment", "New Comment", "Review › Comments", new_comment).key("Mod+Alt+M").params(r#"{"text": string}"#),
         CommandSpec::new("review.reply", "Reply", "Review › Comments", reply).params(r#"{"id": n, "text": string}"#),
         CommandSpec::new("review.editComment", "Edit Comment", "Review › Comments", edit_comment).params(r#"{"id": n, "text": string}"#),
@@ -971,6 +1081,36 @@ mod tests {
     use wordcraft_layout::display::{DisplayOptions, Draw, page_display};
 
     use crate::Session;
+    #[test]
+    fn visual_review_snapshots_do_not_edit_the_document() {
+        let mut s = Session::new(Document::from_text("Original text"));
+        let original = s.doc.clone();
+        let dirty = s.dirty;
+        let revision = s.rev();
+
+        s.run("review.visualBaseline", &json!({})).unwrap();
+
+        assert_eq!(s.doc, original);
+        assert_eq!(s.dirty, dirty);
+        assert_eq!(s.rev(), revision);
+        assert_eq!(s.visual_review.baseline.as_ref(), Some(&original));
+
+        // Opening another document keeps the captured baseline.
+        s.set_document(Document::from_text("Revised text"));
+        let revised = s.doc.clone();
+
+        s.run("review.visualCompare", &json!({})).unwrap();
+
+        assert_eq!(s.doc, revised);
+        assert_eq!(s.visual_review.baseline.as_ref(), Some(&original));
+        assert_eq!(s.visual_review.compared.as_ref(), Some(&revised));
+
+        // Clearing review state never clears the working document.
+        s.run("review.visualClear", &json!({})).unwrap();
+        assert!(s.visual_review.baseline.is_none());
+        assert!(s.visual_review.compared.is_none());
+        assert_eq!(s.doc, revised);
+    }
 
     /// What the first page draws with the session's Track Changes Options.
     fn draws(s: &mut Session) -> (Vec<Draw>, f32) {

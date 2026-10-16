@@ -8,6 +8,7 @@
 //! command that nothing outside them changed (the command is rolled back otherwise).
 
 use serde_json::{Value, json};
+use wordcraft_doc::control::{ContentControl, ControlKind, ControlLock};
 use wordcraft_doc::para::{InlineObject, OBJ};
 use wordcraft_doc::props::CharProps;
 use wordcraft_doc::{Document, PermRange, Pos, StoryRef};
@@ -20,7 +21,7 @@ const MODES: [&str; 5] = ["none", "readOnly", "comments", "trackedChanges", "for
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("review.restrict", "Restrict Editing", "Review › Protect", restrict).params(
-            r#"{"mode"?: "none|readOnly|comments|trackedChanges|forms" (start enforcing; "none" stops), "formatting"?: bool (limit formatting to unlocked styles), "lockedStyles"?: [style id or name] (the styles that can't be applied; every other style is unlocked), "password"?: string (set when enforcing; required to stop a password-protected document), "stop"?: bool, "exception"?: "add" (the selection stays editable for everyone) | "remove" (exceptions touching the selection) | "removeAll"} → state"#,
+            r#"{"mode"?: "none|readOnly|comments|trackedChanges|forms" (start enforcing; "none" stops), "formatting"?: bool (limit formatting to unlocked styles), "lockedStyles"?: [style id or name] (the styles that can't be applied; every other style is unlocked), "password"?: string (set when enforcing; required to stop a password-protected document), "stop"?: bool, "exception"?: "add" (the selection stays editable for everyone) | "control" (make the current plain/rich-text control an editable field) | "remove" (exceptions touching the selection) | "removeAll"} → state"#,
         ),
     ]
 }
@@ -57,9 +58,10 @@ fn restrict(s: &mut Session, v: &Value) -> CmdResult {
         }
         match e {
             "add" => add_exception(s)?,
+            "control" => add_control_exception(s)?,
             "remove" => remove_exceptions(s, false)?,
             "removeAll" => remove_exceptions(s, true)?,
-            _ => return Err(CmdError::Params("`exception` is \"add\", \"remove\" or \"removeAll\"".into())),
+            _ => return Err(CmdError::Params("`exception` is \"add\", \"control\", \"remove\" or \"removeAll\"".into())),
         }
         return Ok(state(s));
     }
@@ -154,7 +156,56 @@ fn add_exception(s: &mut Session) -> Result<(), CmdError> {
     s.sel = crate::Selection { anchor: after_start, focus: end };
     Ok(())
 }
+/// Make one existing text control editable without allowing its wrapper
+/// or definition to be removed while document protection is active.
+fn add_control_exception(s: &mut Session) -> Result<(), CmdError> {
+    let r = s.doc.control_at(&s.sel.focus).ok_or_else(|| CmdError::Disabled("put the cursor inside a text content control first".into()))?;
 
+    if !matches!(&r.control.kind, ControlKind::Text { .. } | ControlKind::RichText) {
+        return Err(CmdError::Disabled("this option supports plain-text and rich-text content controls".into()));
+    }
+
+    if !r.control.lock.can_edit() {
+        return Err(CmdError::Disabled("this control's content is locked; unlock its content first".into()));
+    }
+
+    if r.control.tag.starts_with("wc-component:") {
+        return Err(CmdError::Disabled("this is a linked component; use a separate text field for editable input".into()));
+    }
+
+    // Do not turn a nested control or a container of other controls into
+    // a broad editable region by accident.
+    let overlaps_control =
+        s.doc.control_ranges(r.start.story).iter().any(|other| other.start != r.start && other.start < r.end && r.start < other.end);
+    if overlaps_control {
+        return Err(CmdError::Disabled("use a text control that is not nested inside or around another control".into()));
+    }
+
+    // The exception surrounds the entire control. Its state must be able
+    // to change when placeholder text becomes real text or vice versa.
+    let end_off = r.end.off.checked_add(OBJ.len_utf8()).ok_or_else(|| CmdError::Failed("the field's end position is too large".into()))?;
+    let end = Pos { off: end_off, ..r.end.clone() };
+
+    let overlaps_exception =
+        s.doc.perm_ranges().iter().any(|existing| existing.start.story == r.start.story && existing.start <= end && r.start <= existing.end);
+    if overlaps_exception {
+        return Err(CmdError::Disabled("this field overlaps an editable region; remove that region before marking the field".into()));
+    }
+
+    let control = s.doc.control_mut(&r.start).ok_or_else(|| CmdError::Failed("the content control could not be found".into()))?;
+    control.lock = ControlLock::SdtLocked;
+    control.temporary = false;
+
+    s.sel = crate::Selection { anchor: r.start, focus: end };
+    add_exception(s)?;
+
+    // add_exception leaves the whole field selected. Move inside its
+    // start marker so typing goes into the field.
+    let start = s.sel.anchor.clone();
+    let off = start.off.checked_add(OBJ.len_utf8()).ok_or_else(|| CmdError::Failed("the field's start position is too large".into()))?;
+    s.sel = crate::Selection::caret(Pos { off, ..start });
+    Ok(())
+}
 /// Remove the exceptions that touch the selection (or all of them).
 fn remove_exceptions(s: &mut Session, all: bool) -> Result<(), CmdError> {
     let (a, b) = s.sel.ordered();
@@ -244,7 +295,27 @@ fn check_formatting(s: &Session, id: &str, params: &Value) -> Result<(), CmdErro
 /// Did a command leave everything outside the exceptions as it was? Compares the text, run
 /// formatting and paragraph formatting outside the ranges `author` may edit, in every story.
 pub(crate) fn outside_unchanged(before: &Document, after: &Document, author: &str) -> bool {
-    outside(before, author) == outside(after, author)
+    outside(before, author) == outside(after, author) && protected_text_controls(before) == protected_text_controls(after)
+}
+/// Preserve non-deletable text controls and their definitions during
+/// protected editing. Placeholder visibility may change as users type.
+fn protected_text_controls(doc: &Document) -> Vec<(StoryRef, ContentControl)> {
+    let mut out = Vec::new();
+    let stories = std::iter::once(StoryRef::Body).chain(doc.parts.keys().map(|id| StoryRef::Part(*id)));
+
+    for story in stories {
+        for range in doc.control_ranges(story) {
+            let mut control = range.control.clone();
+            if control.lock.can_delete() || !matches!(&control.kind, ControlKind::Text { .. } | ControlKind::RichText) {
+                continue;
+            }
+
+            control.showing_placeholder = false;
+            out.push((story, control));
+        }
+    }
+
+    out
 }
 
 /// One piece of protected content: text with its formatting, or a paragraph mark's formatting.
@@ -333,6 +404,67 @@ pub fn next_region(s: &Session, from: &Pos) -> Option<(Pos, Pos)> {
 mod tests {
     use super::*;
     use crate::Selection;
+    #[test]
+    fn template_text_field_edits_but_its_definition_stays_protected() {
+        let mut s = Session::new(Document::from_text("Fixed heading.\nName\nFixed disclaimer."));
+
+        s.run("select.text", &json!({"text": "Name"})).unwrap();
+        s.run("developer.plainText", &json!({"title": "Name", "tag": "template-name"})).unwrap();
+
+        s.run("review.restrict", &json!({"exception": "control"})).unwrap();
+        s.run("review.restrict", &json!({"mode": "readOnly"})).unwrap();
+
+        s.run("select.text", &json!({"text": "Name"})).unwrap();
+        s.run("text.insert", &json!({"text": "Siddu"})).unwrap();
+        assert!(s.doc.plain_text(StoryRef::Body).contains("Siddu"));
+
+        // Properties cannot unlock or rename the protected field.
+        let before = s.doc.clone();
+        assert!(s.run("developer.properties", &json!({"control": "template-name", "lockDelete": false}),).is_err());
+        assert_eq!(s.doc, before);
+
+        // Text outside the field cannot change.
+        s.run("select.text", &json!({"text": "Fixed heading."})).unwrap();
+        let before = s.doc.clone();
+        assert!(s.run("text.insert", &json!({"text": "Changed heading"})).is_err());
+        assert_eq!(s.doc, before);
+
+        // The editable region and field protection survive DOCX.
+        let bytes = wordcraft_docx::write(&s.doc).unwrap();
+        let doc = wordcraft_docx::read(&bytes).unwrap();
+        assert_eq!(doc.settings.protection.as_deref(), Some("readOnly"));
+        assert_eq!(doc.perm_ranges().len(), 1);
+
+        let mut reopened = Session::new(doc);
+        reopened.run("select.text", &json!({"text": "Siddu"})).unwrap();
+        reopened.run("text.insert", &json!({"text": "Sai"})).unwrap();
+        assert!(reopened.doc.plain_text(StoryRef::Body).contains("Sai"));
+    }
+
+    #[test]
+    fn template_placeholder_can_be_filled_and_field_cannot_be_deleted() {
+        let mut s = Session::new(Document::new());
+
+        s.run("developer.plainText", &json!({"title": "Name", "tag": "template-name"})).unwrap();
+        s.run("review.restrict", &json!({"exception": "control"})).unwrap();
+        s.run("review.restrict", &json!({"mode": "readOnly"})).unwrap();
+
+        s.run("text.insert", &json!({"text": "Siddu"})).unwrap();
+        assert_eq!(s.doc.plain_text(StoryRef::Body), "Siddu");
+
+        let before = s.doc.clone();
+        assert!(s.run("developer.removeControl", &json!({"control": "template-name"}),).is_err());
+        assert_eq!(s.doc, before);
+
+        // Removing the value may restore the placeholder, but keeps the field.
+        s.run("select.text", &json!({"text": "Siddu"})).unwrap();
+        s.run("text.delete", &json!({})).unwrap();
+
+        let ranges = s.doc.control_ranges(StoryRef::Body);
+        assert_eq!(ranges.len(), 1);
+        assert!(!ranges[0].control.lock.can_delete());
+        assert!(ranges[0].control.lock.can_edit());
+    }
 
     fn select(s: &mut Session, text: &str) {
         s.run("select.text", &json!({"text": text})).unwrap();

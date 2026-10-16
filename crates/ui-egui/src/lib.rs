@@ -27,6 +27,7 @@ pub mod canvas;
 pub mod caret_glide;
 pub mod chrome;
 pub mod colors;
+pub mod components_pane;
 pub mod content_controls;
 pub mod control;
 pub mod credits;
@@ -74,7 +75,9 @@ pub mod table_pen;
 pub mod table_resize;
 pub mod table_ruler;
 pub mod theme;
+pub mod visual_review;
 pub mod widgets;
+
 pub mod window_geometry;
 pub mod wordart_menus;
 pub mod zotero;
