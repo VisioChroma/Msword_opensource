@@ -6,15 +6,15 @@ use wordcraft_doc::Document;
 use wordcraft_engine::Session;
 
 use crate::WordApp;
+use crate::change_marks::{self, Mark, Side};
 
 #[derive(Clone)]
 struct Preview {
     left: TextureHandle,
     right: TextureHandle,
-    highlighted: TextureHandle,
+    marks: Vec<Mark>,
     left_pages: usize,
     right_pages: usize,
-    changed_pixels: usize,
     objects_differ: bool,
     sections_differ: bool,
 }
@@ -23,26 +23,9 @@ struct Preview {
 struct Cache {
     key: Option<(u64, usize)>,
     page: usize,
-    highlight: bool,
+    hide_marks: bool,
     preview: Option<Preview>,
     error: String,
-}
-
-/// Red pixels indicate visible differences above a small rendering tolerance.
-fn highlighted_pixels(a: &[u8], b: &[u8]) -> (Vec<u8>, usize) {
-    let mut result = b.to_vec();
-    let mut changed = 0usize;
-
-    for ((old, new), output) in a.chunks_exact(4).zip(b.chunks_exact(4)).zip(result.chunks_exact_mut(4)) {
-        let different = old.iter().take(3).zip(new.iter().take(3)).any(|(x, y)| x.abs_diff(*y) > 24);
-
-        if different {
-            output.copy_from_slice(&[255, 96, 96, 255]);
-            changed += 1;
-        }
-    }
-
-    (result, changed)
 }
 
 fn build_preview(a: &Document, b: &Document, page: usize, ctx: &egui::Context) -> Result<Preview, String> {
@@ -102,7 +85,7 @@ fn build_preview(a: &Document, b: &Document, page: usize, ctx: &egui::Context) -
         return Err("The renderer returned an unexpected pixel count.".into());
     }
 
-    let (highlighted, changed_pixels) = highlighted_pixels(&left_pixels, &right_pixels);
+    let marks = change_marks::find_marks(&left_pixels, &right_pixels, size[0], size[1]);
 
     let texture =
         |name: &str, pixels: &[u8]| ctx.load_texture(name, egui::ColorImage::from_rgba_unmultiplied(size, pixels), egui::TextureOptions::LINEAR);
@@ -110,23 +93,26 @@ fn build_preview(a: &Document, b: &Document, page: usize, ctx: &egui::Context) -
     Ok(Preview {
         left: texture("visual_review_baseline", &left_pixels),
         right: texture("visual_review_revised", &right_pixels),
-        highlighted: texture("visual_review_changes", &highlighted),
+        marks,
         left_pages: left_layout.pages.len(),
         right_pages: right_layout.pages.len(),
-        changed_pixels,
         objects_differ: wordcraft_engine::cmd::review::visual_objects_differ(a, b),
         sections_differ: a.sections() != b.sections(),
     })
 }
 
-fn draw_page(ui: &mut Ui, texture: &TextureHandle) {
+fn draw_page(ui: &mut Ui, texture: &TextureHandle, marks: &[Mark], side: Option<Side>) {
     let native = texture.size_vec2();
     let width = ui.available_width().clamp(100.0, 600.0);
     let height = width * native.y / native.x.max(1.0);
     let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
 
     ui.painter().image(texture.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+    if let Some(side) = side {
+        change_marks::paint(ui.painter(), rect, marks, side);
+    }
 }
+
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     if !app.session.visual_review.open {
         return;
@@ -191,7 +177,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
             });
 
-            ui.label(tl!("Accept and Reject in the Review ribbon apply to tracked revisions, not to the red visual highlights."));
+            ui.label(tl!("Accept and Reject in the Review ribbon apply to tracked revisions, not to the colored visual highlights."));
 
             let state = &app.session.visual_review;
 
@@ -232,7 +218,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             next_page = cache.page.saturating_add(1);
                         }
 
-                        ui.checkbox(&mut cache.highlight, tl!("Highlight visual differences"));
+                        let mut show_marks = !cache.hide_marks;
+                        ui.checkbox(&mut show_marks, tl!("Highlight visual differences"));
+                        cache.hide_marks = !show_marks;
                     });
 
                     if preview.left_pages != preview.right_pages {
@@ -245,11 +233,12 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                         ui.label(tl!("Section structure or page settings differ between the snapshots."));
                     }
 
-                    ui.label(if preview.changed_pixels == 0 {
-                        tl!("No visual difference detected on this page at preview resolution.")
+                    if preview.marks.is_empty() {
+                        ui.label(tl!("No visual difference detected on this page at preview resolution."));
                     } else {
-                        tl!("Visual differences detected on this page.")
-                    });
+                        ui.label(tl!("Visual differences detected on this page."));
+                        change_marks::legend(ui, &preview.marks);
+                    }
 
                     egui::ScrollArea::both().id_salt("visual_review_pages").max_height(560.0).show(ui, |ui| {
                         ui.columns(2, |columns| {
@@ -259,14 +248,13 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                     if cache.page >= preview.left_pages {
                                         column.label(tl!("No page in this version"));
                                     }
-                                    draw_page(column, &preview.left);
+                                    draw_page(column, &preview.left, &preview.marks, if cache.hide_marks { None } else { Some(Side::Before) });
                                 } else {
                                     column.label(tl!("Compared snapshot"));
                                     if cache.page >= preview.right_pages {
                                         column.label(tl!("No page in this version"));
                                     }
-                                    let image = if cache.highlight { &preview.highlighted } else { &preview.right };
-                                    draw_page(column, image);
+                                    draw_page(column, &preview.right, &preview.marks, if cache.hide_marks { None } else { Some(Side::After) });
                                 }
                             }
                         });
@@ -290,21 +278,4 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
 
     app.session.visual_review.open = open && !return_to_editor;
     ctx.data_mut(|data| data.insert_temp(cache_id, cache));
-}
-#[cfg(test)]
-mod tests {
-    use super::highlighted_pixels;
-
-    #[test]
-    fn visual_review_highlights_added_and_removed_pixels() {
-        let white = [255, 255, 255, 255];
-        let black = [0, 0, 0, 255];
-
-        assert_eq!(highlighted_pixels(&white, &white).1, 0);
-        assert_eq!(highlighted_pixels(&white, &black).1, 1);
-        assert_eq!(highlighted_pixels(&black, &white).1, 1);
-
-        let (pixels, _) = highlighted_pixels(&black, &white);
-        assert_eq!(pixels, vec![255, 96, 96, 255]);
-    }
 }

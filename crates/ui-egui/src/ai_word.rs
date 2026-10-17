@@ -7,7 +7,7 @@ use std::time::Duration;
 use egui::{Align2, Color32, Pos2, Sense, vec2};
 
 use crate::theme::Tokens;
-use crate::{WordApp, ai_context, ai_format, ai_guidelines, ai_integrity, ai_net, ai_plan, ai_research, ai_voice};
+use crate::{WordApp, ai_context, ai_format, ai_guidelines, ai_integrity, ai_net, ai_plan, ai_preview, ai_research, ai_voice};
 
 /// A finished request: the plan to build and what to tell the user.
 struct Done {
@@ -43,6 +43,8 @@ pub struct State {
     context: ai_context::State,
     /// "Citations and integrity": citation checks, reference verification, similarity.
     integrity: ai_integrity::State,
+    /// "Preview before committing": the isolated draft and its side-by-side review.
+    preview: ai_preview::State,
 }
 
 pub fn show(app: &mut WordApp, ctx: &egui::Context) {
@@ -62,6 +64,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
     if let Some(i) = st.pick.take() {
         apply_choice(app, &mut st, i);
     }
+    ai_preview::show(app, ctx, &mut st.preview, &mut st.messages);
     app.ai = st;
 }
 
@@ -365,7 +368,7 @@ fn poll(app: &mut WordApp, ctx: &egui::Context, st: &mut State) {
         Ok(result) => {
             st.busy = None;
             let msg = match result {
-                Ok(done) => finish(app, done),
+                Ok(done) => finish(app, st, done),
                 Err(e) => format!("I couldn't create the document.\n{e}"),
             };
             st.messages.push((false, msg));
@@ -380,23 +383,26 @@ fn poll(app: &mut WordApp, ctx: &egui::Context, st: &mut State) {
 }
 
 /// Build the plan into the document; the message to show.
-fn finish(app: &mut WordApp, done: Done) -> String {
-    match ai_plan::apply_plan(&mut app.session, &done.plan) {
-        Ok(n) => {
-            app.canvas.scroll_to_caret = true;
+/// Build the plan into a private draft and open the preview; the message to show.
+fn finish(app: &mut WordApp, st: &mut State, done: Done) -> String {
+    let title = if done.plan.document_type.is_empty() { "New document".to_string() } else { format!("New {}", done.plan.document_type) };
+    match ai_preview::build_draft(&app.session, &title, |s| ai_plan::apply_plan(s, &done.plan).map(|_| ())) {
+        Ok(draft) => {
+            let n = draft.change_count();
+            st.preview.open(draft);
             let mut kind = done.plan.document_type.clone();
             if !done.plan.audience.is_empty() {
                 kind = format!("{kind} for {}", done.plan.audience);
             }
-            let mut m = format!("Done: {kind} ({n} blocks added at the end of the page).\n{}", done.plan.summary);
+            let mut m = format!("Draft ready: {kind}. {n} changes to review in the preview window. Your document has not been changed yet.\n{}", done.plan.summary);
             if !done.summary.is_empty() {
                 m.push_str("\n\n");
                 m.push_str(&done.summary);
             }
-            m.push_str(&format!("\n\nWritten by {}. Ctrl+Z undoes all of it.", done.label));
+            m.push_str(&format!("\n\nWritten by {}. Press Apply in the preview to add it, or Discard to drop it.", done.label));
             m
         }
-        Err(e) => format!("I couldn't build the document, and I undid what I had added.\n{e}"),
+        Err(e) => format!("I couldn't prepare the draft.\n{e}"),
     }
 }
 /// Look at the document, then ask the models for formatting options on a worker thread.
@@ -421,12 +427,24 @@ fn start_format(ctx: &egui::Context, st: &mut State, session: &wordcraft_engine:
 }
 
 /// Apply the option the user picked. The options stay on offer so another can be tried.
+/// Build the option the user picked into a private draft and open the preview.
 fn apply_choice(app: &mut WordApp, st: &mut State, i: usize) {
     let Some(p) = st.proposal.clone() else { return };
     let Some(choice) = p.choices.get(i) else { return };
-    let msg = match ai_format::apply(&mut app.session, choice) {
-        Ok(done) => ai_format::done_message(&p, i, choice, &done),
-        Err(e) => format!("I couldn't apply that layout, and I undid what I had changed.\n{e}"),
+    let title = format!("Layout option {} ({})", i + 1, choice.category.label());
+    let msg = match ai_preview::build_draft(&app.session, &title, |s| ai_format::apply(s, choice).map(|_| ())) {
+        Ok(draft) => {
+            let n = draft.change_count();
+            st.preview.open(draft);
+            format!(
+                "Previewing option {} ({}): {}.\n{n} changes to review in the preview window. Your document has not been changed yet.\n\nSuggested by {}.",
+                i + 1,
+                choice.category.label(),
+                choice.describe(),
+                p.model
+            )
+        }
+        Err(e) => format!("I couldn't prepare that layout.\n{e}"),
     };
     st.messages.push((false, msg));
 }
