@@ -22,6 +22,11 @@ macro_rules! tl {
 
 pub mod a11y;
 pub mod a11y_pane;
+pub mod ai_net;
+pub mod ai_plan;
+pub mod ai_research;
+pub mod ai_voice;
+pub mod ai_word;
 pub mod backstage;
 pub mod canvas;
 pub mod caret_glide;
@@ -421,6 +426,8 @@ pub struct WordApp {
     pub(crate) outline_prev_tab: Option<String>,
     /// Zotero commands in flight (`ui.zotero.*`).
     pub zotero: zotero::ZoteroLink,
+    /// "Word", the AI assistant (button and panel).
+    pub(crate) ai: ai_word::State,
     /// The egui context, once the first frame has run (background work wakes the UI with it).
     pub(crate) ctx: Option<egui::Context>,
     /// Read Aloud: the start of the sentence the caret was last moved to, and the last error shown.
@@ -510,6 +517,7 @@ impl WordApp {
             smart_art_typing: None,
             outline_prev_tab: None,
             zotero: zotero::ZoteroLink::default(),
+            ai: Default::default(),
             ctx: None,
             read_aloud_at: None,
             read_aloud_error: None,
@@ -1536,6 +1544,7 @@ impl WordApp {
         colors::show(self, &ctx);
         zotero::show_alert(self, &ctx);
         read_aloud::show(self, &ctx);
+        ai_word::show(self, &ctx);
         crate::keytips::show(self, &ctx, ui);
         keys::global_shortcuts(self, &ctx);
         if let Some(url) = self.canvas.open_url.take() {

@@ -36,6 +36,11 @@ zbus = "=5.19.0"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The browser clock (`SystemTime::now()`/`Instant::now()` panic on wasm32).
 js-sys = "0.3"
+# "Word" AI: free online models (Gemini, Groq) over HTTPS. Desktop only; the web build skips it.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = { version = "3", features = ["json"] }
+# "Word" AI voice input: records the default microphone (desktop only).
+cpal = "0.15"
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
