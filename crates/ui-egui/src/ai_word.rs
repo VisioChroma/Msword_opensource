@@ -7,7 +7,7 @@ use std::time::Duration;
 use egui::{Align2, Color32, Pos2, Sense, vec2};
 
 use crate::theme::Tokens;
-use crate::{WordApp, ai_format, ai_net, ai_plan, ai_research, ai_voice};
+use crate::{WordApp, ai_format, ai_guidelines, ai_net, ai_plan, ai_research, ai_voice};
 
 /// A finished request: the plan to build and what to tell the user.
 struct Done {
@@ -37,12 +37,15 @@ pub struct State {
     proposal: Option<ai_format::Proposal>,
     /// The option the user picked; `show` applies it.
     pick: Option<usize>,
+    /// "Guidelines and compliance": rules, findings and the file picker.
+    guide: ai_guidelines::State,
 }
 
 pub fn show(app: &mut WordApp, ctx: &egui::Context) {
     let t = Tokens::get(ctx);
     let mut st = std::mem::take(&mut app.ai);
     poll(app, ctx, &mut st);
+    ai_guidelines::drive(app, ctx, &mut st.guide, st.model, &mut st.messages);
     launcher(ctx, &t, &mut st);
     if st.open {
         panel(ctx, &t, &mut st);
@@ -202,6 +205,7 @@ fn panel(ctx: &egui::Context, t: &Tokens, st: &mut State) {
                     dismiss = true;
                 }
             }
+            ai_guidelines::ui(ui, t, &mut st.guide);
             ui.separator();
             let r = ui.add(egui::TextEdit::multiline(&mut st.input).desired_rows(3).desired_width(f32::INFINITY).hint_text("What should I write?"));
             let ctrl_enter = r.has_focus() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter));
