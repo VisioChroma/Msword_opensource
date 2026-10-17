@@ -7,7 +7,7 @@ use std::time::Duration;
 use egui::{Align2, Color32, Pos2, Sense, vec2};
 
 use crate::theme::Tokens;
-use crate::{WordApp, ai_format, ai_guidelines, ai_net, ai_plan, ai_research, ai_voice};
+use crate::{WordApp, ai_context, ai_format, ai_guidelines, ai_net, ai_plan, ai_research, ai_voice};
 
 /// A finished request: the plan to build and what to tell the user.
 struct Done {
@@ -39,6 +39,8 @@ pub struct State {
     pick: Option<usize>,
     /// "Guidelines and compliance": rules, findings and the file picker.
     guide: ai_guidelines::State,
+        /// "Research context": persistent memory of the document, and the continuity checks.
+    context: ai_context::State,
 }
 
 pub fn show(app: &mut WordApp, ctx: &egui::Context) {
@@ -46,6 +48,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
     let mut st = std::mem::take(&mut app.ai);
     poll(app, ctx, &mut st);
     ai_guidelines::drive(app, ctx, &mut st.guide, st.model, &mut st.messages);
+    ai_context::drive(app, ctx, &mut st.context, st.model, &mut st.messages);
     launcher(ctx, &t, &mut st);
     if st.open {
         panel(ctx, &t, &mut st);
@@ -206,6 +209,7 @@ fn panel(ctx: &egui::Context, t: &Tokens, st: &mut State) {
                 }
             }
             ai_guidelines::ui(ui, t, &mut st.guide);
+            ai_context::ui(ui, t, &mut st.context);
             ui.separator();
             let r = ui.add(egui::TextEdit::multiline(&mut st.input).desired_rows(3).desired_width(f32::INFINITY).hint_text("What should I write?"));
             let ctrl_enter = r.has_focus() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter));
@@ -269,12 +273,17 @@ fn toggle_mic(st: &mut State) {
 }
 
 /// The background work: plain writing, or research then writing.
-fn work(prompt: &str, only: Option<usize>, research: bool) -> Result<Done, String> {
+/// The background work: plain writing, or research then writing.
+fn work(prompt: &str, only: Option<usize>, research: bool, memory: Option<&str>) -> Result<Done, String> {
     if research {
         let o = ai_research::run(prompt, only)?;
         return Ok(Done { plan: o.plan, label: o.label, summary: o.summary });
     }
-    let reply = ai_net::ask(ai_plan::SYSTEM_PROMPT, prompt, only, |text| ai_plan::parse_plan(text).is_ok())?;
+    let user = match memory {
+        Some(m) => format!("{m}\n\nRequest:\n{prompt}"),
+        None => prompt.to_string(),
+    };
+    let reply = ai_net::ask(ai_plan::SYSTEM_PROMPT, &user, only, |text| ai_plan::parse_plan(text).is_ok())?;
     let plan = ai_plan::parse_plan(&reply.text)?;
     Ok(Done { plan, label: reply.label, summary: String::new() })
 }
@@ -286,8 +295,9 @@ fn start(ctx: &egui::Context, st: &mut State, prompt: String) {
     let wake = ctx.clone();
     let only = st.model;
     let research = st.research;
+    let memory = st.context.prompt_block();
     let spawned = std::thread::Builder::new().name("word-ai".into()).spawn(move || {
-        let r = work(&prompt, only, research);
+        let r = work(&prompt, only, research, memory.as_deref());
         let _ = tx.send(r);
         wake.request_repaint();
     });

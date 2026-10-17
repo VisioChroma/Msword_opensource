@@ -22,6 +22,7 @@ macro_rules! tl {
 
 pub mod a11y;
 pub mod a11y_pane;
+pub mod ai_context;
 pub mod ai_format;
 pub mod ai_guidelines;
 pub mod ai_net;
