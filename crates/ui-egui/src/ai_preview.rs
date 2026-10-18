@@ -24,6 +24,7 @@ use wordcraft_engine::Session;
 use wordcraft_layout::{DocLayout, Placed};
 
 use crate::WordApp;
+use crate::ai_validate;
 use crate::change_marks;
 use crate::theme::Tokens;
 
@@ -829,24 +830,50 @@ impl Draft {
     }
 }
 
-/// Replace the real document with the merged draft, as one Undo step.
+/// Validate the merged draft on a private copy, replace the real document as one Undo step,
+/// check the result, and roll back if it is broken.
 fn commit(app: &mut WordApp, d: &Draft) -> Result<String, String> {
+    // The original must not have changed while the preview was open.
     if d.stamp != (app.session.document_id(), app.session.rev()) {
-        return Err("Your document changed after this draft was made. Discard the draft and ask Word again.".into());
+        return Err("Your document changed after this draft was made. Nothing was applied. Discard the draft and ask Word again.".into());
     }
     let (acc, rej, pend) = d.counts();
     let merged = d.merged()?;
+
+    // Inspect, render, repair, validate again: all on a private copy.
+    let expected = ai_validate::text_fingerprint(&merged);
+    let (checked, report) = ai_validate::validate(merged);
+    if ai_validate::text_fingerprint(&checked) != expected {
+        return Err("The automatic check would have changed your text, so nothing was applied. Your document is unchanged.".into());
+    }
+    if report.has_errors() {
+        return Err(format!("The draft did not pass validation, so nothing was applied. Your document is unchanged.{}", report.error_lines()));
+    }
+
+    // Commit through the session as ONE Undo step.
     app.session.checkpoint("Word: apply draft");
-    app.session.doc = merged;
+    app.session.doc = checked;
     app.session.clamp_selection();
     app.session.touch();
     app.session.relayout();
+
+    // Validate the saved document; if it is broken, roll back with Undo.
+    let layout = app.session.layout();
+    let broken = ai_validate::verify_committed(&app.session.doc, &layout);
+    if !broken.is_empty() {
+        app.session.undo();
+        app.session.relayout();
+        return Err(format!("The applied document failed its final check, so it was rolled back. Your document is as it was.{}", ai_validate::error_text(&broken)));
+    }
     app.canvas.scroll_to_caret = true;
+
     let left = rej + pend;
     let mut m = format!("Applied {acc} of {} changes from “{}”.", d.changes.len(), d.title);
     if left > 0 {
         m.push_str(&format!("\n{left} were left out; those parts of your document stay as they were."));
     }
+    m.push('\n');
+    m.push_str(&report.summary());
     m.push_str("\nCtrl+Z undoes all of it.");
     Ok(m)
 }
@@ -1180,10 +1207,10 @@ impl Draft {
                 acts.push(Act::All(Verdict::Rejected));
             }
             ui.separator();
-            if ui.add_enabled(acc > 0 && !stale, egui::Button::new(RichText::new("Apply accepted changes").strong())).clicked() {
+            if ui.add_enabled(acc > 0 && !stale, egui::Button::new(RichText::new("Validate and apply accepted changes").strong())).clicked() {
                 acts.push(Act::Apply);
             }
-            if ui.add_enabled(!stale, egui::Button::new("Accept all and apply")).clicked() {
+            if ui.add_enabled(!stale, egui::Button::new("Accept all, validate and apply")).clicked() {
                 acts.push(Act::All(Verdict::Accepted));
                 acts.push(Act::Apply);
             }

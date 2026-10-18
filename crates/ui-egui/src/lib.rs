@@ -27,6 +27,7 @@ pub mod ai_format;
 pub mod ai_guidelines;
 pub mod ai_integrity;
 pub mod ai_preview;
+pub mod ai_validate;
 pub mod change_marks;
 pub mod ai_net;
 pub mod ai_plan;
