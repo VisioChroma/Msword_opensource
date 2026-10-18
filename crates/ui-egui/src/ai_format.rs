@@ -173,7 +173,11 @@ impl Choice {
         let fonts = if self.heading_font == self.body_font { self.body_font.clone() } else { format!("{} / {}", self.heading_font, self.body_font) };
         let [t, b, l, r] = self.margins;
         let (t, b, l, r) = (t / 72.0, b / 72.0, l / 72.0, r / 72.0);
-        let margins = if (t - b).abs() < 0.01 && (t - l).abs() < 0.01 && (t - r).abs() < 0.01 { format!("{t:.1} in margins") } else { format!("margins {t:.1}/{b:.1}/{l:.1}/{r:.1} in") };
+        let margins = if (t - b).abs() < 0.01 && (t - l).abs() < 0.01 && (t - r).abs() < 0.01 {
+            format!("{t:.1} in margins")
+        } else {
+            format!("margins {t:.1}/{b:.1}/{l:.1}/{r:.1} in")
+        };
         format!("{fonts}, {} pt, {} line spacing, {margins}", self.body_size, self.line_spacing)
     }
 }
@@ -276,9 +280,19 @@ pub fn parse_proposal(reply: &str) -> Result<Proposal, String> {
     let unverified: Vec<String> = v
         .get("unverified")
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).map(|s| s.trim().chars().take(200).collect::<String>()).filter(|s| !s.is_empty()).take(8).collect())
+        .map(|a| {
+            a.iter().filter_map(Value::as_str).map(|s| s.trim().chars().take(200).collect::<String>()).filter(|s| !s.is_empty()).take(8).collect()
+        })
         .unwrap_or_default();
-    Ok(Proposal { document_type: text("document_type"), guideline, unverified, summary: text("summary"), choices, model: String::new(), issues: Issues::default() })
+    Ok(Proposal {
+        document_type: text("document_type"),
+        guideline,
+        unverified,
+        summary: text("summary"),
+        choices,
+        model: String::new(),
+        issues: Issues::default(),
+    })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -305,7 +319,11 @@ pub struct Profile {
 
 /// An ordinary body paragraph: Normal style, text, no list, no section end, no picture.
 fn is_body(p: &Paragraph) -> bool {
-    p.section.is_none() && p.objects.is_empty() && p.props.numbering.is_none() && !p.text.trim().is_empty() && p.props.style.as_deref().is_none_or(|s| s == "Normal")
+    p.section.is_none()
+        && p.objects.is_empty()
+        && p.props.numbering.is_none()
+        && !p.text.trim().is_empty()
+        && p.props.style.as_deref().is_none_or(|s| s == "Normal")
 }
 
 fn has_overrides(p: &Paragraph) -> bool {
@@ -598,7 +616,10 @@ pub fn apply(s: &mut Session, choice: &Choice) -> Result<Applied, String> {
 pub fn intro(p: &Proposal) -> String {
     let kind = if p.document_type.is_empty() { "document" } else { p.document_type.as_str() };
     let mut m = match p.guideline {
-        Some(g) => format!("This looks like a {kind}. I'm using WordCraft's built-in {} rules for margins, font and size, line spacing and indents.", g.name()),
+        Some(g) => format!(
+            "This looks like a {kind}. I'm using WordCraft's built-in {} rules for margins, font and size, line spacing and indents.",
+            g.name()
+        ),
         None => format!("This looks like a {kind}. These are suggestions for its purpose, not an official rule set."),
     };
     if !p.summary.is_empty() {

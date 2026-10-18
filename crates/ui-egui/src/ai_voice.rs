@@ -187,7 +187,8 @@ mod native {
         field(&mut body, boundary, "response_format", "json");
         field(&mut body, boundary, "temperature", "0");
         body.extend_from_slice(
-            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n").as_bytes(),
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n")
+                .as_bytes(),
         );
         body.extend_from_slice(wav);
         body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());

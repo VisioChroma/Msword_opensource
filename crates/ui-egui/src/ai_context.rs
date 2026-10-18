@@ -18,9 +18,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
-use std::sync::Arc;
 use std::time::Duration;
 
 use egui::{Color32, RichText};
@@ -851,7 +851,9 @@ fn report_message(r: &Report) -> String {
     if let Some(n) = &r.note {
         m.push_str(&format!("\n\n{n}"));
     }
-    m.push_str("\n\nEvery finding quotes your document: use Show in the Research context section to jump to it. Nothing in your document was changed.");
+    m.push_str(
+        "\n\nEvery finding quotes your document: use Show in the Research context section to jump to it. Nothing in your document was changed.",
+    );
     if !r.label.is_empty() {
         m.push_str(&format!(" Checked by {}.", r.label));
     }
@@ -1258,7 +1260,10 @@ mod tests {
 
     #[test]
     fn a_figure_in_a_conclusion_needs_a_result() {
-        let parts = vec![part("Results", &["Accuracy was 91.5% overall."]), part("Conclusion", &["We reached 95.2% accuracy.", "An accuracy of 91.50% is good."])];
+        let parts = vec![
+            part("Results", &["Accuracy was 91.5% overall."]),
+            part("Conclusion", &["We reached 95.2% accuracy.", "An accuracy of 91.50% is good."]),
+        ];
         let found = unsupported_figures(&parts);
         assert_eq!(found.len(), 1);
         assert!(found[0].detail.contains("95.2"));
@@ -1280,7 +1285,11 @@ mod tests {
 
     #[test]
     fn the_memory_survives_a_round_trip() {
-        let m = Memory { version: 1, decisions: vec!["British spelling".into()], chapters: vec![Chapter { title: "A".into(), hash: u64::MAX, ..Chapter::default() }] };
+        let m = Memory {
+            version: 1,
+            decisions: vec!["British spelling".into()],
+            chapters: vec![Chapter { title: "A".into(), hash: u64::MAX, ..Chapter::default() }],
+        };
         let back: Memory = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
         assert_eq!(back, m);
     }

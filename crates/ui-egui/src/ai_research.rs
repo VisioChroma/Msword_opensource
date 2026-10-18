@@ -93,16 +93,51 @@ fn on(host: &str, list: &[&str]) -> bool {
 /// A rough, domain-based ranking (a heuristic, not a judgement of the page).
 fn tier_of(host: &str) -> Tier {
     const PRIMARY: &[&str] = &[
-        "doi.org", "arxiv.org", "nature.com", "science.org", "sciencedirect.com", "springer.com", "wiley.com", "ieee.org", "acm.org", "jstor.org",
-        "plos.org", "cell.com", "nejm.org", "thelancet.com", "openreview.net", "aclanthology.org", "pubmed.ncbi.nlm.nih.gov", "biorxiv.org", "medrxiv.org",
+        "doi.org",
+        "arxiv.org",
+        "nature.com",
+        "science.org",
+        "sciencedirect.com",
+        "springer.com",
+        "wiley.com",
+        "ieee.org",
+        "acm.org",
+        "jstor.org",
+        "plos.org",
+        "cell.com",
+        "nejm.org",
+        "thelancet.com",
+        "openreview.net",
+        "aclanthology.org",
+        "pubmed.ncbi.nlm.nih.gov",
+        "biorxiv.org",
+        "medrxiv.org",
     ];
     const OFFICIAL: &[&str] = &["w3.org", "ietf.org", "iso.org", "who.int", "europa.eu", "un.org", "oecd.org", "worldbank.org", "imf.org"];
     const PUBLICATION: &[&str] = &[
-        "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "nytimes.com", "ft.com", "economist.com", "wsj.com", "theguardian.com", "bloomberg.com",
-        "hbr.org", "mckinsey.com", "technologyreview.com", "wired.com", "scientificamerican.com", "britannica.com",
+        "reuters.com",
+        "apnews.com",
+        "bbc.com",
+        "bbc.co.uk",
+        "nytimes.com",
+        "ft.com",
+        "economist.com",
+        "wsj.com",
+        "theguardian.com",
+        "bloomberg.com",
+        "hbr.org",
+        "mckinsey.com",
+        "technologyreview.com",
+        "wired.com",
+        "scientificamerican.com",
+        "britannica.com",
     ];
-    let official_suffix =
-        host.ends_with(".gov") || host.contains(".gov.") || host.ends_with(".edu") || host.contains(".edu.") || host.ends_with(".ac.uk") || host.ends_with(".int");
+    let official_suffix = host.ends_with(".gov")
+        || host.contains(".gov.")
+        || host.ends_with(".edu")
+        || host.contains(".edu.")
+        || host.ends_with(".ac.uk")
+        || host.ends_with(".int");
     let docs_host = ["docs.", "developer.", "developers.", "learn.", "support."].iter().any(|p| host.starts_with(p));
     if on(host, PRIMARY) {
         Tier::Primary
@@ -354,8 +389,9 @@ Do not write the final document. End with one line exactly like: SEARCH_TERMS: <
             "tools": [{"google_search": {}}],
             "generationConfig": {"temperature": 0.2}
         });
-        let v = post_json("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", ("x-goog-api-key", &key), &body)
-            .map_err(|e| format!("web research failed: {e}"))?;
+        let v =
+            post_json("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", ("x-goog-api-key", &key), &body)
+                .map_err(|e| format!("web research failed: {e}"))?;
         let cand = v.pointer("/candidates/0");
         let text = cand
             .and_then(|c| c.pointer("/content/parts"))
@@ -436,7 +472,8 @@ Do not write the final document. End with one line exactly like: SEARCH_TERMS: <
                     .get("author")
                     .and_then(Value::as_array)
                     .map(|a| {
-                        let names: Vec<String> = a.iter().take(3).filter_map(|x| x.get("family").and_then(Value::as_str).map(str::to_string)).collect();
+                        let names: Vec<String> =
+                            a.iter().take(3).filter_map(|x| x.get("family").and_then(Value::as_str).map(str::to_string)).collect();
                         if a.len() > 3 { format!("{} et al.", names.join(", ")) } else { names.join(", ") }
                     })
                     .unwrap_or_default();

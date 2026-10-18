@@ -413,7 +413,8 @@ fn layout_detail(o: &ParaProps, d: &ParaProps) -> String {
     if o.align != d.align {
         v.push(format!("alignment {} → {}", fmt_align(o.align), fmt_align(d.align)));
     }
-    if o.keep_next != d.keep_next || o.keep_lines != d.keep_lines || o.page_break_before != d.page_break_before || o.widow_control != d.widow_control {
+    if o.keep_next != d.keep_next || o.keep_lines != d.keep_lines || o.page_break_before != d.page_break_before || o.widow_control != d.widow_control
+    {
         v.push("pagination (keep together, page break)".to_string());
     }
     if o.outline_level != d.outline_level {
@@ -426,11 +427,7 @@ fn layout_detail(o: &ParaProps, d: &ParaProps) -> String {
 }
 
 fn para_font_size(p: &Paragraph) -> CharProps {
-    CharProps {
-        font: p.runs.iter().find_map(|r| r.props.font.clone()),
-        size: p.runs.iter().find_map(|r| r.props.size),
-        ..Default::default()
-    }
+    CharProps { font: p.runs.iter().find_map(|r| r.props.font.clone()), size: p.runs.iter().find_map(|r| r.props.size), ..Default::default() }
 }
 
 fn snippet(b: &Block) -> String {
@@ -502,10 +499,26 @@ fn setups(doc: &Document) -> Vec<Setup> {
         .iter()
         .filter_map(|b| b.as_para())
         .filter_map(|p| p.section.as_ref())
-        .map(|s| Setup { w: s.page_w, h: s.page_h, landscape: s.landscape, top: s.margin_top, bottom: s.margin_bottom, left: s.margin_left, right: s.margin_right })
+        .map(|s| Setup {
+            w: s.page_w,
+            h: s.page_h,
+            landscape: s.landscape,
+            top: s.margin_top,
+            bottom: s.margin_bottom,
+            left: s.margin_left,
+            right: s.margin_right,
+        })
         .collect();
     let s = &doc.last_section;
-    v.push(Setup { w: s.page_w, h: s.page_h, landscape: s.landscape, top: s.margin_top, bottom: s.margin_bottom, left: s.margin_left, right: s.margin_right });
+    v.push(Setup {
+        w: s.page_w,
+        h: s.page_h,
+        landscape: s.landscape,
+        top: s.margin_top,
+        bottom: s.margin_bottom,
+        left: s.margin_left,
+        right: s.margin_right,
+    });
     v
 }
 
@@ -863,7 +876,10 @@ fn commit(app: &mut WordApp, d: &Draft) -> Result<String, String> {
     if !broken.is_empty() {
         app.session.undo();
         app.session.relayout();
-        return Err(format!("The applied document failed its final check, so it was rolled back. Your document is as it was.{}", ai_validate::error_text(&broken)));
+        return Err(format!(
+            "The applied document failed its final check, so it was rolled back. Your document is as it was.{}",
+            ai_validate::error_text(&broken)
+        ));
     }
     app.canvas.scroll_to_caret = true;
 
@@ -938,7 +954,9 @@ fn anchors(c: &Change, side: Side, doc: &Document, rects: &BTreeMap<usize, [f32;
             list.iter().copied().filter(|i| rects.contains_key(i)).collect()
         }
         Target::Paras(pairs) => pairs.iter().map(|&(o, d)| if side == Side::Original { o } else { d }).filter(|i| rects.contains_key(i)).collect(),
-        Target::Style { id } => rects.keys().copied().filter(|&i| doc.body.get(i).and_then(|b| b.as_para()).is_some_and(|p| style_is(p, id))).collect(),
+        Target::Style { id } => {
+            rects.keys().copied().filter(|&i| doc.body.get(i).and_then(|b| b.as_para()).is_some_and(|p| style_is(p, id))).collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -1065,7 +1083,10 @@ impl Draft {
             ui.label(RichText::new("Your document is not changed until you press Apply.").small().color(t.text_dim));
         });
         if stale {
-            ui.label(RichText::new("Your document changed after this draft was made. Applying is switched off: discard this draft and ask Word again.").color(t.red));
+            ui.label(
+                RichText::new("Your document changed after this draft was made. Applying is switched off: discard this draft and ask Word again.")
+                    .color(t.red),
+            );
         }
 
         // Category chips (also show or hide that category's frames) and page buttons.
@@ -1089,7 +1110,11 @@ impl Draft {
                 acts.push(Act::Page(self.page + 1));
             }
         });
-        ui.label(RichText::new("Solid frame: content or font changed. Dashed frame: spacing, layout or removed text. The number is the same in the list.").small().color(t.text_dim));
+        ui.label(
+            RichText::new("Solid frame: content or font changed. Dashed frame: spacing, layout or removed text. The number is the same in the list.")
+                .small()
+                .color(t.text_dim),
+        );
         ui.separator();
 
         let avail = ui.available_width();
@@ -1230,11 +1255,17 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, st: &mut State, messages: &m
     draft.ensure_textures(ctx);
     let mut open = true;
     let mut acts: Vec<Act> = Vec::new();
-    egui::Window::new("Preview draft").id(egui::Id::new("word-ai-preview")).open(&mut open).collapsible(false).resizable(true).default_size(vec2(1100.0, 720.0)).show(ctx, |ui| {
-        egui::ScrollArea::both().id_salt("ai-preview-outer").auto_shrink([false, false]).show(ui, |ui| {
-            acts = draft.ui(ui, &t, stale);
+    egui::Window::new("Preview draft")
+        .id(egui::Id::new("word-ai-preview"))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(true)
+        .default_size(vec2(1100.0, 720.0))
+        .show(ctx, |ui| {
+            egui::ScrollArea::both().id_salt("ai-preview-outer").auto_shrink([false, false]).show(ui, |ui| {
+                acts = draft.ui(ui, &t, stale);
+            });
         });
-    });
 
     let mut keep = open;
     if !open {

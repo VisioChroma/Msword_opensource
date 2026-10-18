@@ -237,15 +237,33 @@ pub fn inspect(doc: &Document, layout: &DocLayout) -> Vec<Issue> {
         };
         let covered: usize = p.runs.iter().map(|r| r.len).sum();
         if covered != p.text.len() {
-            out.push(Issue::new(Severity::Warning, Kind::Structure, None, Some(i), format!("paragraph {} has formatting that does not cover its text", i + 1)));
+            out.push(Issue::new(
+                Severity::Warning,
+                Kind::Structure,
+                None,
+                Some(i),
+                format!("paragraph {} has formatting that does not cover its text", i + 1),
+            ));
         }
         if bad_format(p) {
-            out.push(Issue::new(Severity::Warning, Kind::BadFormat, None, Some(i), format!("paragraph {} has an unusable font size, indent or spacing value", i + 1)));
+            out.push(Issue::new(
+                Severity::Warning,
+                Kind::BadFormat,
+                None,
+                Some(i),
+                format!("paragraph {} has an unusable font size, indent or spacing value", i + 1),
+            ));
         }
         if p.text.is_empty() && p.objects.is_empty() {
             streak += 1;
             if streak == EMPTY_STREAK {
-                out.push(Issue::new(Severity::Info, Kind::EmptyParagraphs, None, Some(i), format!("{EMPTY_STREAK} or more empty paragraphs in a row near paragraph {}", i + 1)));
+                out.push(Issue::new(
+                    Severity::Info,
+                    Kind::EmptyParagraphs,
+                    None,
+                    Some(i),
+                    format!("{EMPTY_STREAK} or more empty paragraphs in a row near paragraph {}", i + 1),
+                ));
             }
         } else {
             streak = 0;
@@ -285,7 +303,13 @@ pub fn inspect(doc: &Document, layout: &DocLayout) -> Vec<Issue> {
             && is_heading(prev)
             && prev.props.keep_next != Some(true)
         {
-            out.push(Issue::new(Severity::Warning, Kind::StrandedHeading, Some(n), Some(first - 1), "a heading is left alone at the bottom of the page"));
+            out.push(Issue::new(
+                Severity::Warning,
+                Kind::StrandedHeading,
+                Some(n),
+                Some(first - 1),
+                "a heading is left alone at the bottom of the page",
+            ));
         }
     }
     out
@@ -342,7 +366,13 @@ pub fn repair(doc: &mut Document, issues: &[Issue]) -> Vec<String> {
                 if bad_size(p.mark.size) {
                     p.mark.size = None;
                 }
-                for v in [&mut p.props.indent_left, &mut p.props.indent_right, &mut p.props.indent_first, &mut p.props.space_before, &mut p.props.space_after] {
+                for v in [
+                    &mut p.props.indent_left,
+                    &mut p.props.indent_right,
+                    &mut p.props.indent_first,
+                    &mut p.props.space_before,
+                    &mut p.props.space_after,
+                ] {
                     if bad_len(*v) {
                         *v = None;
                     }

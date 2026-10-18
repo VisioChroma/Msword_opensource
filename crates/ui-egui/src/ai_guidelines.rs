@@ -247,7 +247,11 @@ impl Rules {
             Topic::Spacing => self.spacing.as_ref().map(|r| format!("{} line spacing", num(r.value))),
             Topic::Citations => self.citations.as_ref().map(|r| r.value.label().to_string()),
             Topic::PageLimit => self.page_limit.as_ref().map(|r| {
-                if r.value.excludes.is_empty() { format!("at most {} pages", r.value.pages) } else { format!("at most {} pages, excluding {}", r.value.pages, r.value.excludes) }
+                if r.value.excludes.is_empty() {
+                    format!("at most {} pages", r.value.pages)
+                } else {
+                    format!("at most {} pages, excluding {}", r.value.pages, r.value.excludes)
+                }
             }),
             Topic::Headings => self.headings.as_ref().map(|r| {
                 let mut parts = Vec::new();
@@ -318,7 +322,13 @@ impl Rules {
     }
 }
 
-fn merge_one<T: PartialEq>(topic: Topic, mine: &mut Option<Rule<T>>, theirs: Option<Rule<T>>, describe: impl Fn(&T) -> String, flags: &mut Vec<(Topic, String)>) {
+fn merge_one<T: PartialEq>(
+    topic: Topic,
+    mine: &mut Option<Rule<T>>,
+    theirs: Option<Rule<T>>,
+    describe: impl Fn(&T) -> String,
+    flags: &mut Vec<(Topic, String)>,
+) {
     let Some(theirs) = theirs else { return };
     if flags.iter().any(|(t, m)| *t == topic && m.starts_with("conflicting")) {
         return;
@@ -326,7 +336,8 @@ fn merge_one<T: PartialEq>(topic: Topic, mine: &mut Option<Rule<T>>, theirs: Opt
     match mine.take() {
         None => *mine = Some(theirs),
         Some(m) if m.value == theirs.value => *mine = Some(m),
-        Some(m) => flags.push((topic, format!("conflicting values: {} ({}) vs {} ({}).", describe(&m.value), m.source, describe(&theirs.value), theirs.source))),
+        Some(m) => flags
+            .push((topic, format!("conflicting values: {} ({}) vs {} ({}).", describe(&m.value), m.source, describe(&theirs.value), theirs.source))),
     }
 }
 
@@ -453,7 +464,9 @@ fn mk<T>(value: T, quote: &str, page: Option<u32>, source: &str) -> Rule<T> {
 
 fn strings(v: &Value, max: usize, len: usize) -> Vec<String> {
     v.as_array()
-        .map(|a| a.iter().filter_map(Value::as_str).map(|s| s.trim().chars().take(len).collect::<String>()).filter(|s| !s.is_empty()).take(max).collect())
+        .map(|a| {
+            a.iter().filter_map(Value::as_str).map(|s| s.trim().chars().take(len).collect::<String>()).filter(|s| !s.is_empty()).take(max).collect()
+        })
         .unwrap_or_default()
 }
 
@@ -474,7 +487,16 @@ pub fn parse_rules(reply: &str, origin: &str, source_text: Option<&str>) -> Resu
     for item in list.iter().take(MAX_RULES) {
         let key = item.get("key").and_then(Value::as_str).unwrap_or("").trim().to_ascii_lowercase();
         let Some(topic) = Topic::from_key(&key) else { continue };
-        let quote: String = item.get("quote").and_then(Value::as_str).unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" ").chars().take(MAX_QUOTE).collect();
+        let quote: String = item
+            .get("quote")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(MAX_QUOTE)
+            .collect();
         let page = item.get("page").and_then(Value::as_u64).and_then(|p| u32::try_from(p).ok()).filter(|p| (1..10_000).contains(p));
         let val = item.get("value").unwrap_or(&null);
         let label = topic.label().to_lowercase();
@@ -542,13 +564,21 @@ pub fn parse_rules(reply: &str, origin: &str, source_text: Option<&str>) -> Resu
                 }
             }
             "line_spacing" | "spacing" => match val.as_f64() {
-                Some(n) if (0.5..=4.0).contains(&n) && quote_has(&quote, n) => spacings.push(mk(((n * 100.0).round() / 100.0) as f32, &quote, page, origin)),
-                Some(_) => r.flags.push((topic, "spacing: the quote does not contain the value reported (or it is not a line-spacing multiple), so I did not enforce it.".into())),
+                Some(n) if (0.5..=4.0).contains(&n) && quote_has(&quote, n) => {
+                    spacings.push(mk(((n * 100.0).round() / 100.0) as f32, &quote, page, origin))
+                }
+                Some(_) => r.flags.push((
+                    topic,
+                    "spacing: the quote does not contain the value reported (or it is not a line-spacing multiple), so I did not enforce it.".into(),
+                )),
                 None => r.flags.push((topic, "spacing: I could not read the value.".into())),
             },
             "citation_style" | "citations" => {
                 let style = val.as_str().and_then(CiteStyle::parse);
-                let mentions = ["cit", "refer", "apa", "mla", "ieee", "chicago", "harvard", "vancouver", "numbered", "footnote", "endnote", "author", "["].iter().any(|k| ql.contains(*k));
+                let mentions =
+                    ["cit", "refer", "apa", "mla", "ieee", "chicago", "harvard", "vancouver", "numbered", "footnote", "endnote", "author", "["]
+                        .iter()
+                        .any(|k| ql.contains(*k));
                 match style {
                     Some(s) if mentions => cites.push(mk(s, &quote, page, origin)),
                     _ => r.flags.push((topic, "citations: I could not confirm the citation style from the quote, so I did not enforce it.".into())),
@@ -559,8 +589,12 @@ pub fn parse_rules(reply: &str, origin: &str, source_text: Option<&str>) -> Resu
                 let n = val.as_f64().filter(|n| n.fract() == 0.0 && (1.0..=2000.0).contains(n));
                 let excludes: String = item.get("excludes").and_then(Value::as_str).unwrap_or("").trim().chars().take(80).collect();
                 match n {
-                    Some(n) if unit.starts_with("page") && quote_has(&quote, n) => limits.push(mk(PageLimit { pages: n as u32, excludes }, &quote, page, origin)),
-                    Some(_) if !unit.starts_with("page") => r.flags.push((topic, format!("page limit: the limit is in {unit}, not pages, so I did not enforce it."))),
+                    Some(n) if unit.starts_with("page") && quote_has(&quote, n) => {
+                        limits.push(mk(PageLimit { pages: n as u32, excludes }, &quote, page, origin))
+                    }
+                    Some(_) if !unit.starts_with("page") => {
+                        r.flags.push((topic, format!("page limit: the limit is in {unit}, not pages, so I did not enforce it.")))
+                    }
                     _ => r.flags.push((topic, "page limit: the quote does not contain the number reported, so I did not enforce it.".into())),
                 }
             }
@@ -576,7 +610,8 @@ pub fn parse_rules(reply: &str, origin: &str, source_text: Option<&str>) -> Resu
             }
             "required_sections" | "sections" => {
                 let asked = strings(val, 20, 60);
-                let (found, missing): (Vec<String>, Vec<String>) = asked.into_iter().partition(|s| section_variants(s).iter().any(|x| nq.contains(x.as_str())));
+                let (found, missing): (Vec<String>, Vec<String>) =
+                    asked.into_iter().partition(|s| section_variants(s).iter().any(|x| nq.contains(x.as_str())));
                 if !missing.is_empty() {
                     r.flags.push((topic, format!("required sections: {} not found in the quote, left out.", missing.join(", "))));
                 }
@@ -713,7 +748,11 @@ struct Facts {
 }
 
 fn is_body(p: &Paragraph) -> bool {
-    p.section.is_none() && p.objects.is_empty() && p.props.numbering.is_none() && !p.text.trim().is_empty() && p.props.style.as_deref().is_none_or(|s| s == "Normal")
+    p.section.is_none()
+        && p.objects.is_empty()
+        && p.props.numbering.is_none()
+        && !p.text.trim().is_empty()
+        && p.props.style.as_deref().is_none_or(|s| s == "Normal")
 }
 
 fn is_refs_heading(text: &str) -> bool {
@@ -835,9 +874,12 @@ fn classify(open: char, inner: &str, c: &mut CiteCounts) {
         }
         let mut words = p.split_whitespace();
         let Some(last) = words.next_back() else { continue };
-        let page_like = last.len() <= 9 && last.chars().any(|ch| ch.is_ascii_digit()) && last.chars().all(|ch| ch.is_ascii_digit() || matches!(ch, '-' | '\u{2013}'));
+        let page_like = last.len() <= 9
+            && last.chars().any(|ch| ch.is_ascii_digit())
+            && last.chars().all(|ch| ch.is_ascii_digit() || matches!(ch, '-' | '\u{2013}'));
         let rest: Vec<&str> = words.collect();
-        let names = !rest.is_empty() && rest.iter().all(|w| w.chars().all(|ch| ch.is_alphabetic() || matches!(ch, '.' | '&' | '\'' | '-' | ',' | '\u{2019}')));
+        let names = !rest.is_empty()
+            && rest.iter().all(|w| w.chars().all(|ch| ch.is_alphabetic() || matches!(ch, '.' | '&' | '\'' | '-' | ',' | '\u{2019}')));
         if page_like && names {
             c.author_page += 1;
         }
@@ -994,7 +1036,13 @@ fn judge_citations(style: CiteStyle, f: &Facts) -> (Status, String) {
     if own + others == 0 {
         (Status::Flag, "I found no citations in the text, so I can't check the style.".into())
     } else if others > 0 {
-        (Status::Fail, format!("Expected {}, found {own} of that style and {others} of another (rough scan of the text before the reference list).", style.label()))
+        (
+            Status::Fail,
+            format!(
+                "Expected {}, found {own} of that style and {others} of another (rough scan of the text before the reference list).",
+                style.label()
+            ),
+        )
     } else {
         (Status::Pass, format!("{own} citation(s), all {} (rough scan).", style.label()))
     }
@@ -1027,7 +1075,11 @@ fn judge_headings(r: &HeadingRule, f: &Facts) -> (Status, String) {
         let mut prev = 0u8;
         for (lvl, text) in &f.headings {
             if *lvl > prev.saturating_add(1) && bad.len() < 4 {
-                bad.push(format!("\"{}\" is Heading {lvl} after {}", short(text), if prev == 0 { "nothing".to_string() } else { format!("Heading {prev}") }));
+                bad.push(format!(
+                    "\"{}\" is Heading {lvl} after {}",
+                    short(text),
+                    if prev == 0 { "nothing".to_string() } else { format!("Heading {prev}") }
+                ));
             }
             prev = *lvl;
         }
@@ -1100,7 +1152,13 @@ pub fn check(s: &mut Session, rules: &Rules) -> Vec<Finding> {
 /// The chat message after a check.
 pub fn report(rules: &Rules, findings: &[Finding]) -> String {
     let count = |s: Status| findings.iter().filter(|f| f.status == s).count();
-    let mut m = format!("Checked your document against {}.\n{} passed, {} failed, {} flagged.", rules.name(), count(Status::Pass), count(Status::Fail), count(Status::Flag));
+    let mut m = format!(
+        "Checked your document against {}.\n{} passed, {} failed, {} flagged.",
+        rules.name(),
+        count(Status::Pass),
+        count(Status::Fail),
+        count(Status::Flag)
+    );
     for f in findings.iter().filter(|f| f.status != Status::NotSpecified) {
         m.push_str(&format!("\n- {}: {}. {}", f.topic.label(), f.status.label(), f.detail));
     }
@@ -1342,9 +1400,11 @@ fn colour(s: Status, t: &Tokens) -> Color32 {
 pub fn ui(ui: &mut egui::Ui, t: &Tokens, st: &mut State) {
     egui::CollapsingHeader::new("Guidelines and compliance").default_open(false).show(ui, |ui| {
         ui.label(
-            RichText::new("Type a style (APA 7, MLA 9), the path or link of a guideline PDF or text file, or the name of a university, journal or conference.")
-                .small()
-                .color(t.text_dim),
+            RichText::new(
+                "Type a style (APA 7, MLA 9), the path or link of a guideline PDF or text file, or the name of a university, journal or conference.",
+            )
+            .small()
+            .color(t.text_dim),
         );
         let busy = st.busy.is_some();
         ui.horizontal(|ui| {
@@ -1459,7 +1519,9 @@ pub fn drive(app: &mut WordApp, ctx: &egui::Context, st: &mut State, only: Optio
                 match result {
                     Ok(rules) => {
                         let mut msg = rules.summary();
-                        if st.add && let Some(cur) = st.rules.as_mut() {
+                        if st.add
+                            && let Some(cur) = st.rules.as_mut()
+                        {
                             cur.merge(rules);
                             msg.push_str("\nAdded to the current rules; values that disagree are flagged and not enforced.");
                         } else {

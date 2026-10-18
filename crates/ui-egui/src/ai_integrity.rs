@@ -330,8 +330,7 @@ fn author_cites(inner: &str, chars: &[char], open: usize) -> Vec<Cite> {
     for part in inner.split(';') {
         let ws: Vec<&str> = part.split_whitespace().collect();
         let Some(year) = ws.iter().find_map(|w| year_of(w)) else { continue };
-        let mut surname: Option<String> =
-            ws.iter().map(|w| w.trim_matches(|c: char| !c.is_alphabetic())).find(|w| is_name(w)).map(str::to_string);
+        let mut surname: Option<String> = ws.iter().map(|w| w.trim_matches(|c: char| !c.is_alphabetic())).find(|w| is_name(w)).map(str::to_string);
         if surname.is_none() {
             // "Smith (2020)" and "Smith et al. (2020)": the name just before the bracket.
             let before: String = chars.get(..open).unwrap_or(&[]).iter().collect();
@@ -728,7 +727,9 @@ fn local_claims(doc: &DocText) -> Vec<Finding> {
                 continue;
             }
             let low = sent.to_lowercase();
-            let own = [" we ", " our ", " my ", "table ", "figure ", "fig. "].iter().any(|k| low.contains(k)) || low.starts_with("we ") || low.starts_with("our ");
+            let own = [" we ", " our ", " my ", "table ", "figure ", "fig. "].iter().any(|k| low.contains(k))
+                || low.starts_with("we ")
+                || low.starts_with("our ");
             if own {
                 continue;
             }
@@ -1072,12 +1073,9 @@ mod net {
             "tools": [{"google_search": {}}],
             "generationConfig": {"temperature": 0.0}
         });
-        let v = post_json(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-            ("x-goog-api-key", &key),
-            &body,
-        )
-        .map_err(|e| format!("web search failed: {e}"))?;
+        let v =
+            post_json("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", ("x-goog-api-key", &key), &body)
+                .map_err(|e| format!("web search failed: {e}"))?;
         let uris: Vec<String> = v
             .pointer("/candidates/0/groundingMetadata/groundingChunks")
             .and_then(Value::as_array)
@@ -1248,11 +1246,19 @@ fn check_similarity(doc: &DocText, corpus_dir: &str, web: bool, progress: &Progr
                         let host = host_of(&url);
                         let cited = doc.refs.iter().any(|e| e.contains(&url) || (!host.is_empty() && e.to_lowercase().contains(&host)));
                         let (sev, advice) = if cited {
-                            (Sev::Info, "You cite this source. If the wording is copied, put it in quotation marks with a page number, or rewrite it in your own words.")
+                            (
+                                Sev::Info,
+                                "You cite this source. If the wording is copied, put it in quotation marks with a page number, or rewrite it in your own words.",
+                            )
                         } else {
                             (Sev::Medium, "This page is not in your references. If you used it, cite it; if not, rewrite the passage.")
                         };
-                        let mut f = finding(Kind::Similar, sev, format!("About {pct}% of this passage's wording appears on {host}. {advice}"), Some(lead(p, 100)));
+                        let mut f = finding(
+                            Kind::Similar,
+                            sev,
+                            format!("About {pct}% of this passage's wording appears on {host}. {advice}"),
+                            Some(lead(p, 100)),
+                        );
                         f.url = Some(url);
                         r.findings.push(f);
                     }
@@ -1264,7 +1270,10 @@ fn check_similarity(doc: &DocText, corpus_dir: &str, web: bool, progress: &Progr
             r.notes.push(format!("Web matching problem: {}", clip_head(&web_error, 200)));
         }
         if ran {
-            r.notes.push(format!("Web: searched for {} passage(s). Only pages that were downloaded and really match are listed.", progress.total.load(Ordering::Relaxed)));
+            r.notes.push(format!(
+                "Web: searched for {} passage(s). Only pages that were downloaded and really match are listed.",
+                progress.total.load(Ordering::Relaxed)
+            ));
         }
     }
 
