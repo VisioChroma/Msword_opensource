@@ -6,7 +6,7 @@
 
 An independently modified version of [WordCraft](https://github.com/storytold/wordcraft), extending the original Rust word processor with object management, reusable components, protected templates, visual review, and AI-assisted research and editing.
 
-**Extensions by Sai Krishna Siddu and Karthikplays(Github: https://github.com/Karthikplays)**  
+**Extensions by Sai Krishna Siddu and Karthik(Github: https://github.com/Karthikplays)**  
 **Original WordCraft by the ArtCraft Team and WordCraft contributors**
 
 [Features](#features-added-in-this-version) ·
