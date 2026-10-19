@@ -6,8 +6,7 @@
 
 An independently modified version of [WordCraft](https://github.com/storytold/wordcraft), extending the original Rust word processor with object management, reusable components, protected templates, visual review, and AI-assisted research and editing.
 
-**Extensions by Sai Krishna Siddu**  
-**Name: Karthik**  
+**Extensions by Sai Krishna Siddu and Karthikplays(Github: https://github.com/Karthikplays)**  
 **Original WordCraft by the ArtCraft Team and WordCraft contributors**
 
 [Features](#features-added-in-this-version) ·
@@ -432,7 +431,7 @@ The original team deserves credit for the editor foundation, Rust architecture, 
 
 ### Extensions in This Repository
 
-**Sai Krishna Siddu**
+**Sai Krishna Siddu and Karthik**
 
 The work in this modified version focuses on object management and protection, reusable components, protected templates, layout controls, visual review, and the AI-assisted document workflow described above.
 
